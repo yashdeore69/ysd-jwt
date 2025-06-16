@@ -1,5 +1,7 @@
 Beginner-friendly, secure-by-default JWT library for Node.js
 
+for detailed documentation: https://www.notion.so/ysd-jwt-1ef5e9eb7b0f804cbe7cc722e5374e5f?source=copy_link
+
 # ysd-jwt
 **Work in Progress (v0.1.0)**
 
