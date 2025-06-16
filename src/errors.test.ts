@@ -7,7 +7,7 @@ import {
   MalformedTokenError,
   UtilityError,
   InvalidBase64UrlError,
-  InvalidDurationError
+  InvalidDurationError,
 } from './errors';
 
 describe('Error Classes', () => {
@@ -88,4 +88,4 @@ describe('Error Classes', () => {
       expect(error.name).toBe('InvalidDurationError');
     });
   });
-}); 
+});

@@ -30,7 +30,7 @@ export function sign(payload: JwtPayload, options: SignOptions): string {
   const header: JwtHeader = {
     alg: options.algorithm || 'HS256',
     typ: 'JWT',
-    ...options.header // Allow custom header fields
+    ...options.header, // Allow custom header fields
   };
 
   // Prepare payload
@@ -39,11 +39,11 @@ export function sign(payload: JwtPayload, options: SignOptions): string {
 
   // Set standard claims
   finalPayload.iat = now;
-  
+
   if (options.expiresIn) {
     finalPayload.exp = now + parseExpiresIn(options.expiresIn);
   }
-  
+
   if (options.notBefore) {
     finalPayload.nbf = now + parseExpiresIn(options.notBefore);
   }
@@ -58,15 +58,6 @@ export function sign(payload: JwtPayload, options: SignOptions): string {
 
   if (options.jwtid) {
     finalPayload.jti = options.jwtid;
-  }
-
-  // Validate numeric claims
-  if (finalPayload.exp !== undefined && finalPayload.exp <= now) {
-    throw new ClaimValidationError('Token expiration must be in the future');
-  }
-
-  if (finalPayload.nbf !== undefined && finalPayload.nbf <= now) {
-    throw new ClaimValidationError('Token not-before time must be in the future');
   }
 
   // Encode header and payload
@@ -91,4 +82,4 @@ export function sign(payload: JwtPayload, options: SignOptions): string {
 
   // Return final token
   return `${encodedHeader}.${encodedPayload}.${base64UrlEncode(signature)}`;
-} 
+}

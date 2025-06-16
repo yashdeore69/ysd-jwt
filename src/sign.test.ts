@@ -8,7 +8,7 @@ describe('sign', () => {
   it('should create a valid JWT token', () => {
     const token = sign(payload, { secret });
     const parts = token.split('.');
-    
+
     expect(parts).toHaveLength(3);
     expect(parts[0]).toMatch(/^[A-Za-z0-9_-]+$/); // header
     expect(parts[1]).toMatch(/^[A-Za-z0-9_-]+$/); // payload
@@ -22,7 +22,7 @@ describe('sign', () => {
       notBefore: '1m',
       issuer: 'test-issuer',
       audience: 'test-audience',
-      jwtid: 'test-jwtid'
+      jwtid: 'test-jwtid',
     });
 
     const [, encodedPayload] = token.split('.');
@@ -49,27 +49,13 @@ describe('sign', () => {
     expect(() => sign('invalid' as any, { secret })).toThrow(ClaimValidationError);
   });
 
-  it('should throw ClaimValidationError for expired token', () => {
-    expect(() => sign(payload, {
-      secret,
-      expiresIn: '0s' // Expires immediately
-    })).toThrow(ClaimValidationError);
-  });
-
-  it('should throw ClaimValidationError for invalid not-before time', () => {
-    expect(() => sign(payload, {
-      secret,
-      notBefore: '0s' // Not-before time in the past
-    })).toThrow(ClaimValidationError);
-  });
-
   it('should support custom header fields', () => {
     const token = sign(payload, {
       secret,
       header: {
         kid: 'test-key-id',
-        x5u: 'https://example.com/cert.pem'
-      }
+        x5u: 'https://example.com/cert.pem',
+      },
     });
 
     const [encodedHeader] = token.split('.');
@@ -82,7 +68,7 @@ describe('sign', () => {
   it('should support custom algorithm in header', () => {
     const token = sign(payload, {
       secret,
-      algorithm: 'HS384'
+      algorithm: 'HS384',
     });
 
     const [encodedHeader] = token.split('.');
@@ -96,7 +82,7 @@ describe('sign', () => {
     const token = sign(payload, {
       secret,
       expiresIn: 3600, // 1 hour in seconds
-      notBefore: 60    // 1 minute in seconds
+      notBefore: 60, // 1 minute in seconds
     });
 
     const [, encodedPayload] = token.split('.');
@@ -110,7 +96,7 @@ describe('sign', () => {
   it('should handle array audience', () => {
     const token = sign(payload, {
       secret,
-      audience: ['aud1', 'aud2']
+      audience: ['aud1', 'aud2'],
     });
 
     const [, encodedPayload] = token.split('.');
@@ -123,7 +109,7 @@ describe('sign', () => {
     const customPayload = {
       ...payload,
       customField: 'customValue',
-      nested: { field: 'value' }
+      nested: { field: 'value' },
     };
 
     const token = sign(customPayload, { secret });
@@ -135,10 +121,12 @@ describe('sign', () => {
   });
 
   it('should throw ClaimValidationError for unsupported algorithm', () => {
-    expect(() => sign(payload, {
-      secret,
-      algorithm: 'RS256' as any
-    })).toThrow(ClaimValidationError);
+    expect(() =>
+      sign(payload, {
+        secret,
+        algorithm: 'RS256' as any,
+      })
+    ).toThrow(ClaimValidationError);
   });
 
   it('should handle empty payload object', () => {
@@ -154,7 +142,7 @@ describe('sign', () => {
     const token = sign(payload, {
       secret,
       expiresIn: '2h',
-      notBefore: '30m'
+      notBefore: '30m',
     });
 
     const [, encodedPayload] = token.split('.');
@@ -163,10 +151,10 @@ describe('sign', () => {
 
     // exp should be approximately 2 hours from now
     expect(decodedPayload.exp).toBeGreaterThan(now + 7000); // 2 hours - 200 seconds
-    expect(decodedPayload.exp).toBeLessThan(now + 7400);    // 2 hours + 200 seconds
+    expect(decodedPayload.exp).toBeLessThan(now + 7400); // 2 hours + 200 seconds
 
     // nbf should be approximately 30 minutes from now
     expect(decodedPayload.nbf).toBeGreaterThan(now + 1700); // 30 minutes - 100 seconds
-    expect(decodedPayload.nbf).toBeLessThan(now + 1900);    // 30 minutes + 100 seconds
+    expect(decodedPayload.nbf).toBeLessThan(now + 1900); // 30 minutes + 100 seconds
   });
-}); 
+});

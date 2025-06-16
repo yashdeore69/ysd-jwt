@@ -1,14 +1,25 @@
 import { createHmac, timingSafeEqual } from 'crypto';
-import { base64UrlEncode, base64UrlDecode } from './utils';
+import { base64UrlDecode } from './utils';
 import { VerifyOptions, JwtHeader, JwtPayload } from './types';
 import {
   MissingKeyError,
   TokenExpiredError,
   InvalidSignatureError,
   ClaimValidationError,
-  MalformedTokenError
+  MalformedTokenError,
 } from './errors';
 
+/**
+ * Verifies a JWT token and returns its payload
+ * @param token - The JWT token to verify
+ * @param options - Verification options including secret key and optional claims
+ * @returns The verified JWT payload
+ * @throws {MissingKeyError} If secret is missing
+ * @throws {MalformedTokenError} If token is malformed
+ * @throws {InvalidSignatureError} If signature is invalid
+ * @throws {TokenExpiredError} If token has expired
+ * @throws {ClaimValidationError} If claims are invalid
+ */
 export function verify(token: string, options: VerifyOptions): JwtPayload {
   // Validate secret
   if (!options.secret) {
@@ -30,26 +41,46 @@ export function verify(token: string, options: VerifyOptions): JwtPayload {
   }
 
   // Validate algorithm
-  if (header.alg !== 'HS256') {
-    throw new InvalidSignatureError('Unexpected algorithm: only HS256 is supported');
+  const supportedAlgorithms = ['HS256', 'HS384', 'HS512'];
+  if (!supportedAlgorithms.includes(header.alg)) {
+    throw new InvalidSignatureError(`Unsupported algorithm: ${header.alg}`);
   }
 
-  // Verify signature
-  const signature = createHmac('sha256', options.secret)
-    .update(`${parts[0]}.${parts[1]}`)
-    .digest();
+  // Map JWT alg to Node.js digest
+  const algMap: Record<string, string> = {
+    HS256: 'sha256',
+    HS384: 'sha384',
+    HS512: 'sha512',
+  };
+  const digestAlg = algMap[header.alg];
 
-  const providedSignature = base64UrlDecode(parts[2]);
-  if (!timingSafeEqual(signature, providedSignature)) {
-    throw new InvalidSignatureError('Invalid signature');
-  }
-
-  // Parse payload
+  // Parse payload first to validate JSON
   let payload: JwtPayload;
   try {
     payload = JSON.parse(base64UrlDecode(parts[1]).toString());
   } catch {
     throw new MalformedTokenError('Invalid token payload');
+  }
+
+  // Verify signature
+  const signature = createHmac(digestAlg, options.secret)
+    .update(`${parts[0]}.${parts[1]}`)
+    .digest();
+
+  let providedSignature: Buffer;
+  try {
+    providedSignature = base64UrlDecode(parts[2]);
+  } catch {
+    throw new MalformedTokenError('Invalid signature encoding');
+  }
+
+  // Compare signatures
+  try {
+    if (!timingSafeEqual(signature, providedSignature)) {
+      throw new InvalidSignatureError('Invalid signature');
+    }
+  } catch {
+    throw new InvalidSignatureError('Invalid signature');
   }
 
   // Validate claims
@@ -58,9 +89,7 @@ export function verify(token: string, options: VerifyOptions): JwtPayload {
 
   // Check expiration
   if (payload.exp && now - clockTolerance > payload.exp) {
-    throw new TokenExpiredError(
-      `Token expired at ${new Date(payload.exp * 1000).toISOString()}`
-    );
+    throw new TokenExpiredError(`Token expired at ${new Date(payload.exp * 1000).toISOString()}`);
   }
 
   // Check not before
@@ -91,13 +120,11 @@ export function verify(token: string, options: VerifyOptions): JwtPayload {
       throw new ClaimValidationError('Token audience is required');
     }
 
-    const expectedAud = Array.isArray(options.audience)
-      ? options.audience
-      : [options.audience];
+    const expectedAud = Array.isArray(options.audience) ? options.audience : [options.audience];
 
     const tokenAud = Array.isArray(aud) ? aud : [aud];
 
-    const hasValidAud = tokenAud.some(a => expectedAud.includes(a));
+    const hasValidAud = tokenAud.some((a) => expectedAud.includes(a));
     if (!hasValidAud) {
       throw new ClaimValidationError(
         `Invalid audience: expected ${expectedAud.join(', ')}, got ${tokenAud.join(', ')}`
@@ -106,4 +133,4 @@ export function verify(token: string, options: VerifyOptions): JwtPayload {
   }
 
   return payload;
-} 
+}

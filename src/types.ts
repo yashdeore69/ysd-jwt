@@ -32,4 +32,4 @@ export interface JwtPayload {
   iat?: number;
   jti?: string;
   [key: string]: any;
-} 
+}

@@ -113,4 +113,4 @@ describe('Duration Parsing', () => {
       expect(() => parseExpiresIn(null as any)).toThrow(InvalidDurationError);
     });
   });
-}); 
+});

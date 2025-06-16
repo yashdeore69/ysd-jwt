@@ -59,4 +59,4 @@ export class InvalidDurationError extends UtilityError {
     super(message);
     this.name = 'InvalidDurationError';
   }
-} 
+}
