@@ -1,2 +1,3 @@
 # Exclude .cursor/rules folder
 .cursor/rules/
+myrules.mdc
