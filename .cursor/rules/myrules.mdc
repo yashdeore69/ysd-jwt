@@ -1,0 +1,661 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+Below is a detailed, day-by-day 2-week (14-day) plan to build a robust MVP of your JWT-like Node package. The plan assumes you can dedicate focused time each day; adjust as needed for your schedule. The MVP will go beyond basic HS256: by the end of week 2, you should have HS256 core, RS256 support, claim validation, basic Express middleware, TypeScript types, comprehensive tests, CI, documentation, and an initial npm release. Advanced features (refresh tokens, JWKS, JWE, full revocation storage, CLI) will be scheduled in later iterations.
+
+For security guidance, we reference OWASP materials: ensure you enforce secure defaults (disallow `alg: none`, validate `exp`/`iat`/`nbf`, require strong secrets, use HTTPS, etc.) ([owasp.org][1]).
+
+Also make sure to use ample comments wherever necessary for making the code understandable for beginners.
+---
+
+## Overview of MVP Features by End of Week 2
+
+1. **Core Signing & Verification**
+
+   * HS256 implementation with secure defaults: disallow `alg: none`, require minimum secret strength, validate standard claims (`exp`, `iat`, `nbf`, `iss`, `aud`) with clock skew tolerance.
+   * RS256 implementation: support asymmetric signing/verifying with RSA key pair. Enforce correct key formats.
+2. **TypeScript Support**
+
+   * Written in TypeScript or ship `.d.ts` types. Clear interfaces for `sign`, `verify`, options, and error types.
+3. **Error Handling**
+
+   * Custom error classes (e.g., `TokenExpiredError`, `InvalidSignatureError`, `ClaimValidationError`, `MalformedTokenError`, `MissingKeyError`), with clear, informative messages including absolute timestamps.
+4. **Express Middleware**
+
+   * Basic Express integration: middleware to extract token (from Authorization header by default), verify, attach payload to `req.user`, and handle errors (401 responses).
+5. **Claim Validation Options**
+
+   * Validate `exp`, `nbf`, `iat` with configurable clock tolerance (default e.g. 5 seconds). Validate `issuer` and `audience` if provided.
+6. **Key Management Basics**
+
+   * Helper utilities/documentation for RSA key usage: reading PEM strings, advice on generating keys (via `openssl`).
+7. **Testing & CI**
+
+   * Unit tests covering HS256 and RS256 flows: valid tokens, invalid signatures, expired tokens, wrong key, malformed tokens, wrong claims. Integration test for middleware.
+   * GitHub Actions: lint, type-check, tests on push/PR.
+8. **Documentation**
+
+   * README with installation, quick start, API reference, security notes, limitations, examples.
+   * CHANGELOG for initial releases.
+9. **Publishing**
+
+   * Prepare `package.json` (`main`, `types`, `files`), build scripts, and publish v0.1.0 for HS256-only in Week 1; v0.2.0 after RS256 & middleware in Week 2.
+10. **Example Project**
+
+    * A minimal Express example in `/examples`: login issuing token, protected route using middleware.
+
+---
+
+## Security References (to cite in README and keep in mind)
+
+* **Disallow “none” algorithm & enforce allowed algorithms**: JWT implementations must block `alg: none` attacks and algorithm confusion ([owasp.org][1]).
+* **Signature Verification**: Always verify signature before decoding payload; do not use decode-only functions in production ([owasp.org][1]).
+* **Claim Validation**: Validate `exp`, `iat`, `nbf` with a small clock skew allowance (e.g., 5 seconds); reject expired or not-yet-valid tokens. Ensure reasonable token lifespan ([owasp.org][1]).
+* **Strong Secrets & Key Protection**: For HS256, require sufficiently long random secret (e.g., ≥32 characters or 256 bits). For RS256, keep private keys secure (never commit to repo).
+* **HTTPS & Secure Transmission**: Always transmit tokens over HTTPS. If stored in cookies, mark HttpOnly, Secure, SameSite appropriately.
+* **Do Not Store Sensitive Data in Payload**: JWT payload is base64url-encoded, not encrypted. Avoid embedding PII or secrets without encryption (JWE in later phases).
+* **Audience & Issuer**: Validate `aud` and `iss` to prevent token misuse across services.
+* **Key Usage & Format**: Enforce correct key usage: do not mix HMAC secret with public key (to avoid HMAC-vs-RSA confusion attacks).
+* **Clock Skew Handling**: Use small tolerance (e.g., ±5s) to account for minor clock differences but do not allow large skew that hides server time issues.
+
+---
+
+## 2-Week Plan: Day-by-Day Breakdown
+
+### Week 1: Core HS256, TypeScript, Tests, HS256 Release
+
+#### Day 1: Project Initialization & Setup
+
+* **Tasks**:
+
+  * Choose a package name (e.g., `ysd-jwt`) and create a GitHub repository.
+  * Initialize npm project: `npm init` (set version `0.1.0`).
+  * Set up TypeScript:
+
+    * Install dev dependencies: `typescript`, `ts-node`, `@types/node`.
+    * Create `tsconfig.json` targeting Node.js (e.g., `"target": "ES2020"`, `"module": "CommonJS"`).
+  * Set up linting/formatting:
+
+    * Install `eslint`, `prettier`, and optional `eslint-plugin-security`.
+    * Create `.eslintrc.js` and `.prettierrc` with standard rules.
+  * Set up testing framework:
+
+    * Install Jest with TS support: `jest`, `ts-jest`, `@types/jest`.
+    * Initialize Jest config (`npx ts-jest config:init`).
+  * Plan core modules and directory structure:
+
+    * `src/utils.ts`, `src/errors.ts`, `src/sign.ts`, `src/verify.ts`, `src/index.ts`.
+    * Decide `dist/` output directory.
+* **Deliverables**:
+
+  * Repo with initial commit, TS config, ESLint/Prettier config, Jest config.
+  * README stub noting “Work in progress: v0.1.0 HS256 support”.
+
+#### Day 2: Base64Url & HS256 Sign Implementation
+
+* **Tasks**:
+
+  * Implement Base64Url utilities in `src/utils.ts`:
+
+    * `base64UrlEncode(input: Buffer | string): string`.
+    * `base64UrlDecode(input: string): Buffer`.
+    * Implement duration parsing helper `parseExpiresIn(expiresIn: string|number): number` (e.g., `'1h'` → seconds). For MVP, write a simple parser supporting suffixes `s`, `m`, `h`. Avoid heavy dependencies.
+  * Implement error classes in `src/errors.ts`:
+
+    * `TokenError`, `MissingKeyError`, `TokenExpiredError`, `InvalidSignatureError`, `ClaimValidationError`, `MalformedTokenError`.
+  * Implement `sign(payload, options)` in `src/sign.ts`:
+
+    * Only HS256: build header `{ alg: 'HS256', typ: 'JWT' }`.
+    * Enforce `options.secret` exists, is string, and has minimum length (e.g., `secret.length >= 32`).
+    * Calculate `iat = now`, parse `expiresIn` (default `'1h'`), set `exp = now + seconds`.
+    * Optionally support `nbf` (not-before) if provided.
+    * Optionally include `iss`, `aud` claims if provided.
+    * Serialize header and payload to JSON, encode with base64url.
+    * Compute signature via Node `crypto.createHmac('sha256', secret).update(data).digest()`, encode with base64url.
+    * Return token string.
+  * Write unit tests for `sign`:
+
+    * Signing returns string with three segments.
+    * Secret missing or too short throws error.
+    * `expiresIn` parsing for `'1h'`, `'30m'`, numeric seconds works.
+    * Payload fields not mutated (clone payload).
+* **Deliverables**:
+
+  * Working `sign` implementation.
+  * Tests in Jest covering sign behavior.
+  * Confirm lint and type-check pass.
+
+#### Day 3: HS256 Verify Implementation
+
+* **Tasks**:
+
+  * Implement `verify(token, options)` in `src/verify.ts`:
+
+    * Ensure `options.secret` exists.
+    * Split token into 3 parts; if not exactly 3, throw `MalformedTokenError('Invalid token: expected 3 segments')`.
+    * Decode and parse header JSON safely; if parsing fails, throw `MalformedTokenError('Invalid token header')`.
+    * Enforce `header.alg === 'HS256'`; otherwise throw `InvalidSignatureError('Unexpected alg ... only HS256 supported')`.
+    * Recompute expected signature using `crypto.createHmac('sha256', secret)`, compare with `timingSafeEqual`; if mismatch, throw `InvalidSignatureError('Invalid signature')`.
+    * Decode payload JSON safely; if fails, throw `MalformedTokenError('Invalid token payload')`.
+    * Validate claims:
+
+      * `exp`: if present and `now - clockToleranceSec > exp`, throw `TokenExpiredError` with message including ISO expiration and current times.
+      * `nbf`: if present and `now + clockToleranceSec < nbf`, throw `ClaimValidationError('Token not valid before ...')`.
+      * `iat`: if present and `now + clockToleranceSec < iat`, throw `ClaimValidationError('Token used before issued at ...')`.
+      * `issuer`: if `options.issuer` provided and mismatch, throw `ClaimValidationError('Invalid issuer: expected ..., got ...')`.
+      * `audience`: if `options.audience` provided, check payload `aud` (string or array) contains at least one expected; if mismatch, throw `ClaimValidationError('Invalid audience: expected ..., got ...')`.
+    * Return the payload object (typed as `Record<string, any>` or generic).
+  * Write unit tests for `verify`:
+
+    * Valid token verifies and returns payload (including `iat`, `exp`, etc.).
+    * Wrong secret → throws `InvalidSignatureError`.
+    * Modified payload or header → throws signature or malformed error.
+    * `alg: none` in header: manually craft header with `"alg": "none"` → reject with `InvalidSignatureError`.
+    * Expired token → `TokenExpiredError` with correct ISO timestamps.
+    * Future `nbf` / future `iat` → `ClaimValidationError`.
+    * Issuer/audience mismatches → `ClaimValidationError`.
+    * Malformed token (wrong segments) → `MalformedTokenError`.
+  * Ensure messages include absolute times (e.g., `new Date(payload.exp * 1000).toISOString()` vs current).
+  * Confirm lint/type-check/tests pass.
+* **Deliverables**:
+
+  * Working `verify` implementation for HS256.
+  * Comprehensive Jest tests covering edge cases.
+  * Error classes with clear messages.
+
+#### Day 4: Export & Basic API, README Draft
+
+* **Tasks**:
+
+  * In `src/index.ts`, export `sign` and `verify` functions, and error classes if desired.
+  * Define TypeScript interfaces in `src/types.ts` or inline:
+
+    * `interface SignOptions { secret: string; expiresIn?: string|number; issuer?: string; audience?: string|string[]; notBefore?: string|number; }`
+    * `interface VerifyOptions { secret: string; issuer?: string; audience?: string|string[]; clockToleranceSec?: number; }`
+  * Draft README sections:
+
+    1. **Introduction**: Brief description: “A beginner-friendly, secure-by-default JWT library for Node.js, v0.1.0 HS256 support.”
+    2. **Installation**: `npm install ysd-jwt` (or chosen name).
+    3. **Quick Start**: snippet calling `sign` and `verify`, showing catch of errors.
+    4. **API Reference**: Describe `sign(payload, options)` and `verify(token, options)`, list options and defaults.
+    5. **Security Notes**: Summarize:
+
+       * Use strong secret ≥32 chars; short expirations; validate claims; disallow insecure algs; always use HTTPS; do not store sensitive data in payload ([owasp.org][1]).
+    6. **Limitations**: Only HS256 for v0.1.0. RS256, middleware, refresh tokens, revocation, JWKS, CLI coming in v0.2+. Encourage upgrading once v0.2 is released.
+    7. **Examples**: Minimal code snippet. Mention you will add examples folder later.
+    8. **Contributing**: Note “issues and PRs welcome”; placeholder for CONTRIBUTING.md.
+    9. **CHANGELOG**: Link to `CHANGELOG.md` (create with entry for v0.1.0).
+  * Add README badges: build status (GitHub Actions), npm version.
+  * Set up GitHub Actions workflow `.github/workflows/ci.yml`:
+
+    * On push/PR: run `npm run lint`, `npm run type-check`, `npm test`.
+* **Deliverables**:
+
+  * `src/index.ts` exporting API.
+  * README draft covering above sections.
+  * CI config in place.
+
+#### Day 5: Build Scripts, Package Configuration & Publish HS256 v0.1.0
+
+* **Tasks**:
+
+  * Build step:
+
+    * In `package.json`, add `"build": "tsc"`, configure `outDir` (e.g., `dist`).
+    * Add `"prepare": "npm run build"` so that build runs before publish.
+  * Package.json fields:
+
+    * `"main": "dist/index.js"`.
+    * `"types": "dist/index.d.ts"`.
+    * `"files": ["dist"]` to include only compiled files.
+    * Optionally set `"engines": { "node": ">=14" }` if targeting Node 14+.
+  * Create `CHANGELOG.md` with entry:
+
+    ```
+    ## [0.1.0] - YYYY-MM-DD
+    ### Added
+    - HS256 sign and verify with secure defaults
+    - Claim validation (`exp`, `iat`, `nbf`, optional `iss`, `aud`)
+    - TypeScript types
+    - Custom error classes with clear messages including ISO timestamps
+    - Base64Url utilities, simple duration parsing
+    - Jest tests covering edge cases
+    ```
+  * Publish to npm:
+
+    * Ensure npm account is set up; run `npm publish`.
+  * Smoke-test:
+
+    * In a separate folder/project: `npm install ysd-jwt`, try simple script to `import { sign, verify }` and verify behavior.
+  * Tag GitHub release `v0.1.0` with release notes copied from CHANGELOG.
+* **Deliverables**:
+
+  * Published `0.1.0` package on npm.
+  * Confirm users can install and use basic HS256 functionality.
+  * GitHub release created.
+
+#### Day 6: RS256 Research & Initial Implementation
+
+* **Tasks**:
+
+  * Research Node’s `crypto` APIs for RSA signing and verifying:
+
+    * Signing: `crypto.createSign('RSA-SHA256').update(data).sign(privateKey)`.
+    * Verifying: `crypto.createVerify('RSA-SHA256').update(data).verify(publicKey, signature)`.
+  * Plan interfaces:
+
+    * Extend `sign` and `verify` to accept `algorithm: 'HS256' | 'RS256'` (default 'HS256').
+    * For RS256: require `privateKey` (PEM string or Buffer) for sign; require `publicKey` or `secretOrPublicKey` for verify.
+  * Update TypeScript types:
+
+    * `interface SignOptions { algorithm?: 'HS256' | 'RS256'; secret?: string; privateKey?: string|Buffer; expiresIn?: ...; issuer?: ...; audience?: ...; notBefore?: ... }`.
+    * Ensure mutual exclusivity: if `algorithm === 'HS256'`, require `secret`; if `RS256`, require `privateKey`.
+    * For verify: `interface VerifyOptions { algorithm?: 'HS256' | 'RS256'; secretOrPublicKey: string|Buffer; issuer?: ...; audience?: ...; clockToleranceSec?: ... }`.
+  * Write utility to check key format: basic check that PEM string starts with `-----BEGIN PRIVATE KEY-----` or similar.
+* **Deliverables**:
+
+  * Design for RS256 integration.
+  * Updated type definitions.
+  * Plan in README “Next: RS256 support in Week 2”.
+* **Notes**:
+
+  * Do not implement immediately if time is tight; but aim to start on Day 7.
+
+#### Day 7: Begin RS256 Implementation & Tests
+
+* **Tasks**:
+
+  * Implement RS256 support in `src/sign.ts` and `src/verify.ts`:
+
+    * In `sign`, branch on `options.algorithm` (default 'HS256'):
+
+      * If 'RS256': build header `{ alg: 'RS256', typ: 'JWT' }`; serialize payload similarly; sign with `crypto.createSign('RSA-SHA256')`.
+      * Enforce presence of `options.privateKey`; if missing or invalid, throw `MissingKeyError`.
+    * In `verify`, branch on `options.algorithm` or detect from header:
+
+      * If header.alg is 'RS256', require `options.secretOrPublicKey` to be publicKey; use `crypto.createVerify('RSA-SHA256')` to verify.
+      * Reject mismatches (e.g., header.alg not matching expected algorithm).
+    * Ensure signature comparison uses `verify` rather than manual HMAC.
+  * Write unit tests for RS256:
+
+    * Generate a small test RSA key pair (for testing only): use Node crypto to generate in code or include a sample test key pair (but not in production docs).
+    * Sign a payload with privateKey, verify with publicKey.
+    * Wrong publicKey → `InvalidSignatureError`.
+    * Malformed keys throw appropriate error.
+    * Claim validation for RS256 identical to HS256.
+  * Ensure constant-time comparisons where applicable.
+* **Deliverables**:
+
+  * Working RS256 sign/verify code.
+  * Comprehensive tests.
+* **Caveat**:
+
+  * For testing, embed sample keys in test files but in README instruct users to generate their own in production via `openssl genpkey` commands.
+
+---
+
+### Week 2: Middleware, Comprehensive Tests, Documentation, RS256 Release, Examples
+
+#### Day 8: Express Middleware & Integration Tests
+
+* **Tasks**:
+
+  * Implement Express middleware in `src/middleware.ts`:
+
+    ```ts
+    import { verify } from './verify';
+    import { RequestHandler } from 'express';
+
+    interface JwtMiddlewareOptions {
+      secretOrPublicKey: string | Buffer;
+      algorithm?: 'HS256' | 'RS256';
+      issuer?: string;
+      audience?: string | string[];
+      clockToleranceSec?: number;
+      getToken?: (req: Request) => string | null;
+    }
+
+    export function jwtMiddleware(opts: JwtMiddlewareOptions): RequestHandler {
+      return (req, res, next) => {
+        try {
+          const token = opts.getToken
+            ? opts.getToken(req)
+            : (() => {
+                const auth = req.headers.authorization;
+                if (auth && auth.startsWith('Bearer ')) return auth.slice(7);
+                return null;
+              })();
+          if (!token) {
+            return res.status(401).json({ error: 'No token provided' });
+          }
+          const payload = verify(token, {
+            secretOrPublicKey: opts.secretOrPublicKey,
+            algorithm: opts.algorithm,
+            issuer: opts.issuer,
+            audience: opts.audience,
+            clockToleranceSec: opts.clockToleranceSec,
+          });
+          // Attach to req.user
+          (req as any).user = payload;
+          next();
+        } catch (err: any) {
+          // Customize error response: do not leak sensitive details
+          const msg = err.message || 'Invalid token';
+          return res.status(401).json({ error: msg });
+        }
+      };
+    }
+    ```
+  * Write integration tests:
+
+    * Use a minimal Express app in tests (e.g., with supertest) that mounts middleware on a protected route:
+
+      * Issue a token via sign (HS256 and RS256), send request with `Authorization: Bearer <token>`, expect 200 and payload in response.
+      * Send requests with missing token, malformed token, expired token, wrong signature → expect 401.
+  * Add tests for custom `getToken` (e.g., extracting from cookie header) to show flexibility.
+* **Deliverables**:
+
+  * `jwtMiddleware` implemented and tested.
+  * Tests verifying middleware behavior.
+* **Citations**:
+
+  * Mention in README security: always use HTTPS when sending tokens in headers/cookies.
+  * Validate permissions separately in route handlers (beyond token validation) ([cheatsheetseries.owasp.org][2]).
+
+#### Day 9: Documentation Expansion & Examples
+
+* **Tasks**:
+
+  * Update README with:
+
+    * **RS256 Usage**: show example of signing with privateKey and verifying with publicKey.
+    * **Express Middleware**: code snippet showing how to integrate and extract `req.user`.
+    * **Key Generation Guidance**: brief instructions:
+
+      ```
+      # Generate RSA key pair (for testing; in production handle keys securely):
+      openssl genpkey -algorithm RSA -out private.pem -pkeyopt rsa_keygen_bits:2048
+      openssl rsa -pubout -in private.pem -out public.pem
+      ```
+    * **Example Project**: reference an `/examples` folder.
+  * Create `/examples/express-app/`:
+
+    * A minimal Express server:
+
+      * POST `/login`: accepts credentials stub (e.g., hardcoded user), issues HS256 or RS256 token.
+      * GET `/protected`: uses jwtMiddleware, returns user info.
+    * Include a README in `examples/express-app` explaining how to run:
+
+      ```
+      cd examples/express-app
+      npm install
+      # set env e.g. JWT_SECRET or paths to keys
+      node index.js
+      ```
+  * Add an “Examples” section in main README linking to this example.
+* **Deliverables**:
+
+  * Updated main README with RS256 and middleware examples.
+  * Example Express app directory with code and instructions.
+
+#### Day 10: Key Format Validation & Helpers
+
+* **Tasks**:
+
+  * In code, add helper functions (in `src/utils.ts` or `src/keys.ts`) to validate that provided keys are valid PEM strings or Buffers:
+
+    * For privateKey: check it starts with `-----BEGIN` and contains `PRIVATE KEY-----`.
+    * For publicKey: check `-----BEGIN PUBLIC KEY-----` or `-----BEGIN RSA PUBLIC KEY-----`.
+    * If invalid, throw `MissingKeyError` or another descriptive error.
+  * Add tests for invalid key formats:
+
+    * Passing non-PEM strings → expect error.
+  * Document these requirements in README under RS256 section.
+* **Deliverables**:
+
+  * Key format validation in code.
+  * Tests covering invalid formats.
+  * README instructions highlighting key format requirements.
+
+#### Day 11: Additional Testing & Edge Cases
+
+* **Tasks**:
+
+  * Expand test coverage:
+
+    * Clock skew edge: simulate verifying token issued a few seconds in future or expired a few seconds ago within tolerance.
+    * Large payload sizes: test behavior (though not storing huge payloads in practice; maybe warn in README).
+    * Unicode payload: ensure Base64Url encoding handles UTF-8 content.
+    * Header tampering: craft token where header is tampered to change `alg`, ensure rejection.
+    * HMAC-vs-RSA confusion: ensure that if header says RS256 but secret used, verify rejects; and vice versa.
+  * Ensure coverage threshold is high (e.g., ≥90%). Configure coverage reporting in Jest.
+  * Run lint/type-check/tests; fix any issues.
+* **Deliverables**:
+
+  * Comprehensive test suite addressing edge cases.
+  * Coverage report in CI and badge in README.
+
+#### Day 12: CI/CD Improvements & Release v0.2.0
+
+* **Tasks**:
+
+  * Update GitHub Actions:
+
+    * Ensure build step runs (`npm run build`).
+    * After tests, run coverage and optionally upload coverage report.
+    * Optionally, set up a release workflow: on push of tag `v*`, automatically publish to npm (requires storing NPM token in GitHub Secrets). If not confident, do manual publish.
+  * Update `CHANGELOG.md` with v0.2.0 entries:
+
+    ```
+    ## [0.2.0] - YYYY-MM-DD
+    ### Added
+    - RS256 sign/verify support with key format validation
+    - Express middleware for JWT extraction and verification
+    - Claim validation unchanged; support for both HS256 and RS256
+    - Example Express app in /examples
+    - Expanded tests covering RS256 flows and middleware integration
+    ```
+  * Bump version in `package.json` to `0.2.0`.
+  * Build and publish to npm: `npm publish`.
+  * Create GitHub release `v0.2.0` with release notes.
+* **Deliverables**:
+
+  * Published v0.2.0 on npm with HS256 & RS256 support, middleware, docs, examples.
+  * CI workflow updated.
+* **Citations**:
+
+  * In release notes or README, remind users of secure practices: protect private keys, use HTTPS, validate claims ([owasp.org][1]).
+
+#### Day 13: Roadmap & Next-Phase Planning
+
+* **Tasks**:
+
+  * Draft roadmap for v0.3.0+ in README or a ROADMAP.md:
+
+    * **Refresh Tokens & Rotation**: helper functions for access vs refresh tokens, guidance on secure storage (HttpOnly cookies), rotation patterns.
+    * **Revocation Hooks**: allow `isRevoked(payload)` callback in `verify`; provide examples integrating with Redis or in-memory store.
+    * **JWKS Support**: utilities to serve and consume JWKS endpoints.
+    * **JWE Encryption**: optional encryption of payload for sensitive data.
+    * **Custom Claim Validators**: allow registering custom validation functions for additional claims.
+    * **Plugins for Other Frameworks**: Koa, Fastify middleware.
+    * **CLI Tool**: simple CLI for signing/verifying tokens.
+    * **Performance Benchmarks**: scripts to benchmark HS256 vs RS256.
+    * **Security Auditing**: integrate dependency scanning, automated security checks.
+    * **Community Contributions**: label “good first issue”, add CONTRIBUTING.md, issue templates.
+  * Create GitHub Issues or a Project board listing these features, prioritized.
+  * Write a blog post draft or GitHub discussion summary about your MVP journey: learning Node crypto, JWT pitfalls, TypeScript publishing, etc.
+* **Deliverables**:
+
+  * ROADMAP.md or updated README “Up Next” section.
+  * GitHub Issues filed for v0.3.0 features.
+  * Internal draft blog post or notes for sharing.
+
+#### Day 14: Polish, Feedback Gathering, Buffer Day
+
+* **Tasks**:
+
+  * Polish documentation:
+
+    * Add diagrams or sequence diagrams in README illustrating JWT flow (optional).
+    * Refine wording in README to be beginner-friendly.
+  * Seek feedback:
+
+    * Share repository link with peers or on developer forums (e.g., Dev.to, Reddit r/node, Twitter) asking for early feedback.
+    * Address any small issues or questions.
+  * Plan for maintenance:
+
+    * Set up Dependabot or equivalent for dependency updates.
+    * Configure issue templates (`.github/ISSUE_TEMPLATE/`).
+    * Add CODE\_OF\_CONDUCT.md and CONTRIBUTING.md.
+  * Reflect on lessons learned and note improvements in next cycle.
+* **Deliverables**:
+
+  * Enhanced README, CONTRIBUTING.md, ISSUE\_TEMPLATEs, CODE\_OF\_CONDUCT.md.
+  * Feedback requests posted.
+  * Confirmed that package works as expected for early users.
+  * Final adjustments before moving on to next-phase features.
+
+---
+
+## Daily Time Allocation & Tips
+
+* **Daily Focus (\~2–4 hours/day)**: If full-time, you can allocate more; if part-time, aim for a solid 2–3 hours focusing on one major task per day.
+* **TDD Approach**: Write tests first (or alongside) to guide implementation and catch edge cases early.
+* **Iterate Quickly**: For each feature, write minimal working code, test, then refine error messages and edge-case handling.
+* **Re-use Templates**: If you have a personal starter template for TypeScript libraries with lint, build, test, CI, leverage it to save setup time.
+* **Manage Scope**: Resist adding advanced features prematurely; stick to the 2-week plan. If a task overruns, adjust remaining days by deferring non-critical items to next iteration.
+* **Frequent Commits**: Commit small increments with descriptive messages (e.g., `feat: add HS256 sign`, `test: verify expired token error`). Use conventional commits to streamline changelog generation.
+* **Documentation in Parallel**: As you implement features, update README or add docs immediately; reduces backlog.
+* **Secure Defaults Everywhere**: For each new feature (e.g., RS256), enforce secure checks (correct alg, key presence, minimal key size or format). Cite OWASP guidance where relevant ([owasp.org][1]).
+
+---
+
+## Example README Snippets (for v0.2.0)
+
+````markdown
+## Introduction
+`ysd-jwt` is a beginner-friendly, secure-by-default JWT library for Node.js. v0.2.0 supports HS256 and RS256, with TypeScript types, clear error classes, and Express middleware.
+
+## Installation
+```bash
+npm install ysd-jwt
+````
+
+## Quick Start: HS256
+
+```ts
+import { sign, verify } from 'ysd-jwt';
+
+const secret = process.env.JWT_SECRET!; // ensure ≥32 characters
+const token = sign({ sub: 'user123' }, { secret, expiresIn: '1h', issuer: 'my-app', audience: 'my-app-users' });
+try {
+  const payload = verify(token, { secretOrPublicKey: secret, algorithm: 'HS256', issuer: 'my-app', audience: 'my-app-users' });
+  console.log('Payload:', payload);
+} catch (err) {
+  console.error('Token error:', err.message);
+}
+```
+
+## RS256 Usage
+
+```ts
+import { sign, verify } from 'ysd-jwt';
+import fs from 'fs';
+
+const privateKey = fs.readFileSync('./private.pem');
+const publicKey = fs.readFileSync('./public.pem');
+
+const token = sign({ sub: 'user456' }, {
+  algorithm: 'RS256',
+  privateKey,
+  expiresIn: '2h',
+  issuer: 'my-app',
+  audience: 'my-app-users',
+});
+try {
+  const payload = verify(token, { secretOrPublicKey: publicKey, algorithm: 'RS256', issuer: 'my-app', audience: 'my-app-users' });
+  console.log('Payload:', payload);
+} catch (err) {
+  console.error('Token error:', err.message);
+}
+```
+
+## Express Middleware
+
+```ts
+import express from 'express';
+import { jwtMiddleware } from 'ysd-jwt';
+
+const app = express();
+app.use(
+  jwtMiddleware({
+    secretOrPublicKey: process.env.JWT_SECRET!, // for HS256
+    algorithm: 'HS256',
+    issuer: 'my-app',
+    audience: 'my-app-users',
+  })
+);
+app.get('/protected', (req, res) => {
+  // req.user is set if token valid
+  res.json({ hello: (req as any).user.sub });
+});
+```
+
+## Security Notes
+
+* **Strong Secrets & Keys**: For HS256, use a random secret ≥32 chars. For RS256, keep privateKey secure.
+* **Short Lifetimes**: Default expiresIn is 1h; adjust per use-case.
+* **Validate Claims**: `exp`, `nbf`, `iat`, `iss`, `aud` are validated with default clock tolerance of 5 seconds.
+* **Disallow insecure alg**: `alg: none` is blocked.
+* **HTTPS**: Always transmit tokens over HTTPS; if using cookies, mark HttpOnly, Secure, SameSite.
+* **Do Not Store Sensitive Data**: JWT payload is not encrypted. Use other means or wait for JWE support in future versions.
+
+## Examples
+
+See `/examples/express-app` for a minimal login & protected route demo.
+
+## Contributing & Roadmap
+
+See CONTRIBUTING.md. Upcoming features: Refresh tokens, revocation hooks, JWKS support, JWE encryption, custom claim validators, Fastify/Koa plugins, CLI tool, performance benchmarks, etc. See ROADMAP.md.
+
+```
+
+Cite security notes reference OWASP WSTG for JWT signature and claim validation :contentReference[oaicite:8]{index=8} and OWASP Authorization cheat sheet for validating permissions in route handlers :contentReference[oaicite:9]{index=9}.
+
+---
+
+## After Week 2: Next Iterations
+
+- **v0.3.0** (following weeks):  
+  - Refresh token helpers & patterns; guidance on secure storage (HttpOnly cookies, CSRF considerations). Cite OAuth2 best practices :contentReference[oaicite:10]{index=10}.  
+  - Revocation hook: allow passing `isRevoked(payload)` callback; example integration with in-memory or Redis store.  
+  - JWKS utilities: helper to serve JWKS endpoint; optional client-side fetch+cache logic (document examples).  
+  - Custom claim validators: allow user-supplied functions for application-specific checks.  
+  - Koa/Fastify middleware adapters.  
+  - CLI: `ysd-jwt sign/verify` commands for development.  
+  - Benchmark scripts: measure sign/verify performance for HS256 vs RS256.  
+  - Security audit: integrate Dependabot, vulnerability scanning in CI.  
+  - Community engagement: CONTRIBUTING.md, issue templates, CODE_OF_CONDUCT.md, label “good first issue”.
+
+- **v1.0.0**: Aim when core features stabilized, adequate usage feedback gathered, and major security review done.
+
+---
+
+## Summary
+
+By following this 14-day plan, you will:
+
+- Build a solid understanding of JWT internals (base64url encoding, HMAC, RSA signatures, claim validation).  
+- Deliver an HS256-based library in week 1 (v0.1.0), then expand with RS256, middleware, and documentation in week 2 (v0.2.0).  
+- Produce a publishable npm package with TypeScript types, tests, CI, and examples, which is strong resume/GitHub portfolio material.  
+- Lay groundwork for iterative improvements in subsequent versions (refresh tokens, revocation, JWKS, JWE, etc.).  
+- Adopt secure-by-default practices referencing OWASP guidance to prevent common JWT pitfalls :contentReference[oaicite:11]{index=11}.
+
+Feel free to adjust day allocations based on your availability. If certain tasks overrun, focus on core sign/verify and basic middleware first; defer extras to later days. At each step, write tests first (TDD) and update documentation in parallel. Good luck with your MVP sprint! Let me know if you need help with specific code snippets, CI configurations, or troubleshooting as you go.
+::contentReference[oaicite:12]{index=12}
+```
+
+[1]: https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/06-Session_Management_Testing/10-Testing_JSON_Web_Tokens?utm_source=chatgpt.com "WSTG - Latest | OWASP Foundation"
+[2]: https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html?utm_source=chatgpt.com "Authorization - OWASP Cheat Sheet Series"

@@ -1,3 +1,5 @@
+import { InvalidBase64UrlError, InvalidDurationError } from './errors';
+
 /**
  * Encodes a Buffer or string to base64url format
  */
@@ -13,6 +15,11 @@ export function base64UrlEncode(input: Buffer | string): string {
  * Decodes a base64url string to Buffer
  */
 export function base64UrlDecode(input: string): Buffer {
+  // Check if input contains only valid base64url characters
+  if (!/^[A-Za-z0-9\-_]*$/.test(input)) {
+    throw new InvalidBase64UrlError();
+  }
+  
   const base64 = input.replace(/-/g, '+').replace(/_/g, '/');
   const pad = base64.length % 4;
   const padded = pad ? base64 + '='.repeat(4 - pad) : base64;
@@ -27,9 +34,13 @@ export function parseExpiresIn(expiresIn: string | number): number {
     return expiresIn;
   }
 
+  if (expiresIn == null || typeof expiresIn !== 'string') {
+    throw new InvalidDurationError('Invalid input type. Expected string or number');
+  }
+
   const match = expiresIn.match(/^(\d+)([smh])$/);
   if (!match) {
-    throw new Error('Invalid expiresIn format. Use number of seconds or string like "1h", "30m", "60s"');
+    throw new InvalidDurationError('Invalid expiresIn format. Use number of seconds or string like "1h", "30m", "60s"');
   }
 
   const [, value, unit] = match;
@@ -43,6 +54,6 @@ export function parseExpiresIn(expiresIn: string | number): number {
     case 'h':
       return numValue * 3600;
     default:
-      throw new Error('Invalid time unit. Use s, m, or h');
+      throw new InvalidDurationError('Invalid time unit. Use s, m, or h');
   }
 } 

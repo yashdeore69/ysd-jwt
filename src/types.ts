@@ -4,7 +4,9 @@ export interface SignOptions {
   issuer?: string;
   audience?: string | string[];
   notBefore?: string | number;
-  algorithm?: 'HS256';
+  jwtid?: string;
+  algorithm?: 'HS256' | 'HS384' | 'HS512';
+  header?: Record<string, any>;
 }
 
 export interface VerifyOptions {
@@ -12,12 +14,13 @@ export interface VerifyOptions {
   issuer?: string;
   audience?: string | string[];
   clockToleranceSec?: number;
-  algorithm?: 'HS256';
+  algorithm?: 'HS256' | 'HS384' | 'HS512';
 }
 
 export interface JwtHeader {
-  alg: 'HS256';
+  alg: 'HS256' | 'HS384' | 'HS512';
   typ: 'JWT';
+  [key: string]: any;
 }
 
 export interface JwtPayload {

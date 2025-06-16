@@ -38,4 +38,25 @@ export class MalformedTokenError extends TokenError {
     super(message);
     this.name = 'MalformedTokenError';
   }
+}
+
+export class UtilityError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'UtilityError';
+  }
+}
+
+export class InvalidBase64UrlError extends UtilityError {
+  constructor(message: string = 'Invalid base64url string') {
+    super(message);
+    this.name = 'InvalidBase64UrlError';
+  }
+}
+
+export class InvalidDurationError extends UtilityError {
+  constructor(message: string = 'Invalid duration format') {
+    super(message);
+    this.name = 'InvalidDurationError';
+  }
 } 

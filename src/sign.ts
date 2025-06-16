@@ -2,8 +2,16 @@ import { createHmac } from 'crypto';
 import { base64UrlEncode } from './utils';
 import { parseExpiresIn } from './utils';
 import { SignOptions, JwtHeader, JwtPayload } from './types';
-import { MissingKeyError } from './errors';
+import { MissingKeyError, ClaimValidationError } from './errors';
 
+/**
+ * Signs a JWT payload with the provided options
+ * @param payload - The JWT payload to sign
+ * @param options - Signing options including secret key and optional claims
+ * @returns The signed JWT token
+ * @throws {MissingKeyError} If secret is missing or too short
+ * @throws {ClaimValidationError} If payload contains invalid claims
+ */
 export function sign(payload: JwtPayload, options: SignOptions): string {
   // Validate secret
   if (!options.secret) {
@@ -13,10 +21,16 @@ export function sign(payload: JwtPayload, options: SignOptions): string {
     throw new MissingKeyError('Secret must be at least 32 characters long');
   }
 
+  // Validate payload
+  if (typeof payload !== 'object' || payload === null) {
+    throw new ClaimValidationError('Payload must be a non-null object');
+  }
+
   // Create header
   const header: JwtHeader = {
-    alg: 'HS256',
-    typ: 'JWT'
+    alg: options.algorithm || 'HS256',
+    typ: 'JWT',
+    ...options.header // Allow custom header fields
   };
 
   // Prepare payload
@@ -42,12 +56,36 @@ export function sign(payload: JwtPayload, options: SignOptions): string {
     finalPayload.aud = options.audience;
   }
 
+  if (options.jwtid) {
+    finalPayload.jti = options.jwtid;
+  }
+
+  // Validate numeric claims
+  if (finalPayload.exp !== undefined && finalPayload.exp <= now) {
+    throw new ClaimValidationError('Token expiration must be in the future');
+  }
+
+  if (finalPayload.nbf !== undefined && finalPayload.nbf <= now) {
+    throw new ClaimValidationError('Token not-before time must be in the future');
+  }
+
   // Encode header and payload
   const encodedHeader = base64UrlEncode(JSON.stringify(header));
   const encodedPayload = base64UrlEncode(JSON.stringify(finalPayload));
 
+  // Map JWT alg to Node.js digest
+  const algMap: Record<string, string> = {
+    HS256: 'sha256',
+    HS384: 'sha384',
+    HS512: 'sha512',
+  };
+  const digestAlg = algMap[header.alg];
+  if (!digestAlg) {
+    throw new ClaimValidationError(`Unsupported algorithm: ${header.alg}`);
+  }
+
   // Create signature
-  const signature = createHmac('sha256', options.secret)
+  const signature = createHmac(digestAlg, options.secret)
     .update(`${encodedHeader}.${encodedPayload}`)
     .digest();
 
