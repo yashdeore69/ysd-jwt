@@ -1,0 +1,2 @@
+# Exclude .cursor/rules folder
+.cursor/rules/
