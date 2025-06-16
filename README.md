@@ -1,0 +1,1 @@
+Beginner-friendly, secure-by-default JWT library for Node.js
