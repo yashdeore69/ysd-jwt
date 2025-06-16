@@ -1,0 +1,48 @@
+{
+  "name": "ysd-jwt",
+  "version": "0.1.0",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rimraf dist",
+    "lint": "eslint . --ext .ts",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "prepare": "npm run build",
+    "prepublishOnly": "npm run test && npm run lint"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yashdeore69/ysd-jwt.git"
+  },
+  "keywords": [
+    "jwt",
+    "authentication",
+    "express-middleware",
+    "token",
+    "secure-auth",
+    "cookie",
+    "header",
+    "ysd"
+  ],
+  "author": "Yash Sunil Deore <deoreyash2003@gmail.com>",
+  "license": "MIT",
+  "description": "A lightweight and beginner-friendly JWT authentication middleware for Express.js with token creation, verification, and user extraction from headers or cookies.",
+  "devDependencies": {
+    "@types/jest": "^29.5.14",
+    "@types/node": "^24.0.1",
+    "@typescript-eslint/eslint-plugin": "^8.34.0",
+    "@typescript-eslint/parser": "^8.34.0",
+    "eslint": "^9.29.0",
+    "eslint-config-prettier": "^10.1.5",
+    "eslint-plugin-prettier": "^5.4.1",
+    "jest": "^29.7.0",
+    "prettier": "^3.5.3",
+    "rimraf": "^6.0.1",
+    "ts-jest": "^29.4.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3"
+  }
+}
