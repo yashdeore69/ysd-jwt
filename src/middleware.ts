@@ -49,4 +49,4 @@ export function jwtMiddleware(opts: JwtMiddlewareOptions): RequestHandler {
       return;
     }
   };
-} 
+}

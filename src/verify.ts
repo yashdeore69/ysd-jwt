@@ -50,7 +50,9 @@ export function verify(token: string, options: VerifyOptions): JwtPayload {
 
   // Validate algorithm
   if (header.alg !== algorithm) {
-    throw new InvalidSignatureError(`Token algorithm mismatch: expected ${algorithm}, got ${header.alg}`);
+    throw new InvalidSignatureError(
+      `Token algorithm mismatch: expected ${algorithm}, got ${header.alg}`
+    );
   }
 
   // Parse payload first to validate JSON
@@ -66,9 +68,7 @@ export function verify(token: string, options: VerifyOptions): JwtPayload {
   let isValid = false;
 
   if (algorithm === 'HS256') {
-    const signature = createHmac('sha256', options.secret!)
-      .update(signingInput)
-      .digest();
+    const signature = createHmac('sha256', options.secret!).update(signingInput).digest();
 
     let providedSignature: Buffer;
     try {

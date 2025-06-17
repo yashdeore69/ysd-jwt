@@ -76,13 +76,9 @@ export function sign(payload: JwtPayload, options: SignOptions): string {
   // Create signature based on algorithm
   let signature: Buffer;
   if (algorithm === 'HS256') {
-    signature = createHmac('sha256', options.secret!)
-      .update(signingInput)
-      .digest();
+    signature = createHmac('sha256', options.secret!).update(signingInput).digest();
   } else if (algorithm === 'RS256') {
-    signature = createSign('RSA-SHA256')
-      .update(signingInput)
-      .sign(options.privateKey!);
+    signature = createSign('RSA-SHA256').update(signingInput).sign(options.privateKey!);
   } else {
     throw new ClaimValidationError(`Unsupported algorithm: ${algorithm}`);
   }

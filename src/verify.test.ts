@@ -7,7 +7,6 @@ import {
   ClaimValidationError,
   MalformedTokenError,
 } from './errors';
-import crypto from 'crypto';
 import { generateKeyPairSync } from 'crypto';
 
 describe('verify', () => {
@@ -174,9 +173,9 @@ describe('verify', () => {
         publicKeyEncoding: { type: 'spki', format: 'pem' },
         privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
       });
-      expect(() => verify(token, { publicKey: wrongKeyPair.publicKey, algorithm: 'RS256' })).toThrow(
-        InvalidSignatureError
-      );
+      expect(() =>
+        verify(token, { publicKey: wrongKeyPair.publicKey, algorithm: 'RS256' })
+      ).toThrow(InvalidSignatureError);
     });
 
     it('should throw InvalidSignatureError when token is tampered with', () => {

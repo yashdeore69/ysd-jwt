@@ -4,7 +4,7 @@ import { VerifyOptions, JwtPayload } from './types';
  * @param token - The JWT token to verify
  * @param options - Verification options including secret key and optional claims
  * @returns The verified JWT payload
- * @throws {MissingKeyError} If secret is missing
+ * @throws {MissingKeyError} If secret/publicKey is missing
  * @throws {MalformedTokenError} If token is malformed
  * @throws {InvalidSignatureError} If signature is invalid
  * @throws {TokenExpiredError} If token has expired

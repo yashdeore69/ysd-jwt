@@ -33,9 +33,7 @@ describe('jwtMiddleware', () => {
   it('should allow access with valid HS256 token', async () => {
     const token = sign(payload, { secret });
     const app = createApp(jwtMiddleware({ secret }));
-    const res = await request(app)
-      .get('/protected')
-      .set('Authorization', `Bearer ${token}`);
+    const res = await request(app).get('/protected').set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(200);
     expect(res.body.user).toMatchObject(payload);
   });
@@ -43,9 +41,7 @@ describe('jwtMiddleware', () => {
   it('should allow access with valid RS256 token', async () => {
     const token = sign(payload, { privateKey, algorithm: 'RS256' });
     const app = createApp(jwtMiddleware({ publicKey, algorithm: 'RS256' }));
-    const res = await request(app)
-      .get('/protected')
-      .set('Authorization', `Bearer ${token}`);
+    const res = await request(app).get('/protected').set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(200);
     expect(res.body.user).toMatchObject(payload);
   });
@@ -70,9 +66,7 @@ describe('jwtMiddleware', () => {
     const expiredPayload = { ...payload, exp: Math.floor(Date.now() / 1000) - 10 };
     const token = sign(expiredPayload, { secret });
     const app = createApp(jwtMiddleware({ secret }));
-    const res = await request(app)
-      .get('/protected')
-      .set('Authorization', `Bearer ${token}`);
+    const res = await request(app).get('/protected').set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(401);
     expect(res.body.error).toMatch(/expired/i);
   });
@@ -80,9 +74,7 @@ describe('jwtMiddleware', () => {
   it('should deny access with wrong secret', async () => {
     const token = sign(payload, { secret });
     const app = createApp(jwtMiddleware({ secret: 'wrong-secret' }));
-    const res = await request(app)
-      .get('/protected')
-      .set('Authorization', `Bearer ${token}`);
+    const res = await request(app).get('/protected').set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(401);
     expect(res.body.error).toMatch(/Invalid signature/);
   });
@@ -92,11 +84,11 @@ describe('jwtMiddleware', () => {
     const app = createApp(
       jwtMiddleware({
         secret,
-        getToken: (req) => req.query.token as string || null,
+        getToken: (req) => (req.query.token as string) || null,
       })
     );
     const res = await request(app).get('/protected?token=' + token);
     expect(res.status).toBe(200);
     expect(res.body.user).toMatchObject(payload);
   });
-}); 
+});

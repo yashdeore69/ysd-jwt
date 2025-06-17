@@ -7,7 +7,7 @@ describe('sign', () => {
   const payload = { sub: '1234567890', name: 'John Doe' };
 
   // Generate RSA key pair for RS256 tests
-  const { privateKey, publicKey } = generateKeyPairSync('rsa', {
+  const { privateKey } = generateKeyPairSync('rsa', {
     modulusLength: 2048,
     publicKeyEncoding: {
       type: 'spki',

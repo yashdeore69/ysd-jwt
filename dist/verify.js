@@ -9,16 +9,24 @@ const errors_1 = require("./errors");
  * @param token - The JWT token to verify
  * @param options - Verification options including secret key and optional claims
  * @returns The verified JWT payload
- * @throws {MissingKeyError} If secret is missing
+ * @throws {MissingKeyError} If secret/publicKey is missing
  * @throws {MalformedTokenError} If token is malformed
  * @throws {InvalidSignatureError} If signature is invalid
  * @throws {TokenExpiredError} If token has expired
  * @throws {ClaimValidationError} If claims are invalid
  */
 function verify(token, options) {
-    // Validate secret
-    if (!options.secret) {
-        throw new errors_1.MissingKeyError('Secret is required for verification');
+    const algorithm = options.algorithm || 'HS256';
+    // Validate key based on algorithm
+    if (algorithm === 'HS256') {
+        if (!options.secret) {
+            throw new errors_1.MissingKeyError('Secret is required for HS256 verification');
+        }
+    }
+    else if (algorithm === 'RS256') {
+        if (!options.publicKey) {
+            throw new errors_1.MissingKeyError('Public key is required for RS256 verification');
+        }
     }
     // Split token
     const parts = token.split('.');
@@ -34,17 +42,9 @@ function verify(token, options) {
         throw new errors_1.MalformedTokenError('Invalid token header');
     }
     // Validate algorithm
-    const supportedAlgorithms = ['HS256', 'HS384', 'HS512'];
-    if (!supportedAlgorithms.includes(header.alg)) {
-        throw new errors_1.InvalidSignatureError(`Unsupported algorithm: ${header.alg}`);
+    if (header.alg !== algorithm) {
+        throw new errors_1.InvalidSignatureError(`Token algorithm mismatch: expected ${algorithm}, got ${header.alg}`);
     }
-    // Map JWT alg to Node.js digest
-    const algMap = {
-        HS256: 'sha256',
-        HS384: 'sha384',
-        HS512: 'sha512',
-    };
-    const digestAlg = algMap[header.alg];
     // Parse payload first to validate JSON
     let payload;
     try {
@@ -54,23 +54,37 @@ function verify(token, options) {
         throw new errors_1.MalformedTokenError('Invalid token payload');
     }
     // Verify signature
-    const signature = (0, crypto_1.createHmac)(digestAlg, options.secret)
-        .update(`${parts[0]}.${parts[1]}`)
-        .digest();
-    let providedSignature;
-    try {
-        providedSignature = (0, utils_1.base64UrlDecode)(parts[2]);
-    }
-    catch {
-        throw new errors_1.MalformedTokenError('Invalid signature encoding');
-    }
-    // Compare signatures
-    try {
-        if (!(0, crypto_1.timingSafeEqual)(signature, providedSignature)) {
+    const signingInput = `${parts[0]}.${parts[1]}`;
+    let isValid = false;
+    if (algorithm === 'HS256') {
+        const signature = (0, crypto_1.createHmac)('sha256', options.secret).update(signingInput).digest();
+        let providedSignature;
+        try {
+            providedSignature = (0, utils_1.base64UrlDecode)(parts[2]);
+        }
+        catch {
+            throw new errors_1.MalformedTokenError('Invalid signature encoding');
+        }
+        try {
+            isValid = (0, crypto_1.timingSafeEqual)(signature, providedSignature);
+        }
+        catch {
             throw new errors_1.InvalidSignatureError('Invalid signature');
         }
     }
-    catch {
+    else if (algorithm === 'RS256') {
+        let providedSignature;
+        try {
+            providedSignature = (0, utils_1.base64UrlDecode)(parts[2]);
+        }
+        catch {
+            throw new errors_1.MalformedTokenError('Invalid signature encoding');
+        }
+        isValid = (0, crypto_1.createVerify)('RSA-SHA256')
+            .update(signingInput)
+            .verify(options.publicKey, providedSignature);
+    }
+    if (!isValid) {
         throw new errors_1.InvalidSignatureError('Invalid signature');
     }
     // Validate claims

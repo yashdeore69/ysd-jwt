@@ -4,7 +4,7 @@ import { SignOptions, JwtPayload } from './types';
  * @param payload - The JWT payload to sign
  * @param options - Signing options including secret key and optional claims
  * @returns The signed JWT token
- * @throws {MissingKeyError} If secret is missing or too short
+ * @throws {MissingKeyError} If secret/privateKey is missing or invalid
  * @throws {ClaimValidationError} If payload contains invalid claims
  */
 export declare function sign(payload: JwtPayload, options: SignOptions): string;

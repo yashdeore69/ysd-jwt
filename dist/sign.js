@@ -10,16 +10,24 @@ const errors_1 = require("./errors");
  * @param payload - The JWT payload to sign
  * @param options - Signing options including secret key and optional claims
  * @returns The signed JWT token
- * @throws {MissingKeyError} If secret is missing or too short
+ * @throws {MissingKeyError} If secret/privateKey is missing or invalid
  * @throws {ClaimValidationError} If payload contains invalid claims
  */
 function sign(payload, options) {
-    // Validate secret
-    if (!options.secret) {
-        throw new errors_1.MissingKeyError('Secret is required for signing');
+    const algorithm = options.algorithm || 'HS256';
+    // Validate key based on algorithm
+    if (algorithm === 'HS256') {
+        if (!options.secret) {
+            throw new errors_1.MissingKeyError('Secret is required for HS256 signing');
+        }
+        if (options.secret.length < 32) {
+            throw new errors_1.MissingKeyError('Secret must be at least 32 characters long');
+        }
     }
-    if (options.secret.length < 32) {
-        throw new errors_1.MissingKeyError('Secret must be at least 32 characters long');
+    else if (algorithm === 'RS256') {
+        if (!options.privateKey) {
+            throw new errors_1.MissingKeyError('Private key is required for RS256 signing');
+        }
     }
     // Validate payload
     if (typeof payload !== 'object' || payload === null) {
@@ -27,7 +35,7 @@ function sign(payload, options) {
     }
     // Create header
     const header = {
-        alg: options.algorithm || 'HS256',
+        alg: algorithm,
         typ: 'JWT',
         ...options.header, // Allow custom header fields
     };
@@ -54,20 +62,18 @@ function sign(payload, options) {
     // Encode header and payload
     const encodedHeader = (0, utils_1.base64UrlEncode)(JSON.stringify(header));
     const encodedPayload = (0, utils_1.base64UrlEncode)(JSON.stringify(finalPayload));
-    // Map JWT alg to Node.js digest
-    const algMap = {
-        HS256: 'sha256',
-        HS384: 'sha384',
-        HS512: 'sha512',
-    };
-    const digestAlg = algMap[header.alg];
-    if (!digestAlg) {
-        throw new errors_1.ClaimValidationError(`Unsupported algorithm: ${header.alg}`);
+    const signingInput = `${encodedHeader}.${encodedPayload}`;
+    // Create signature based on algorithm
+    let signature;
+    if (algorithm === 'HS256') {
+        signature = (0, crypto_1.createHmac)('sha256', options.secret).update(signingInput).digest();
     }
-    // Create signature
-    const signature = (0, crypto_1.createHmac)(digestAlg, options.secret)
-        .update(`${encodedHeader}.${encodedPayload}`)
-        .digest();
+    else if (algorithm === 'RS256') {
+        signature = (0, crypto_1.createSign)('RSA-SHA256').update(signingInput).sign(options.privateKey);
+    }
+    else {
+        throw new errors_1.ClaimValidationError(`Unsupported algorithm: ${algorithm}`);
+    }
     // Return final token
     return `${encodedHeader}.${encodedPayload}.${(0, utils_1.base64UrlEncode)(signature)}`;
 }
