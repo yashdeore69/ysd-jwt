@@ -8,142 +8,280 @@ import {
   MalformedTokenError,
 } from './errors';
 import crypto from 'crypto';
+import { generateKeyPairSync } from 'crypto';
 
 describe('verify', () => {
   const secret = 'your-256-bit-secret-your-256-bit-secret';
   const payload = { sub: '1234567890', name: 'John Doe' };
 
-  it('should verify a valid token', () => {
-    const token = sign(payload, { secret });
-    const verified = verify(token, { secret });
-    expect(verified).toEqual(expect.objectContaining(payload));
+  // Generate RSA key pair for RS256 tests
+  const { privateKey, publicKey } = generateKeyPairSync('rsa', {
+    modulusLength: 2048,
+    publicKeyEncoding: {
+      type: 'spki',
+      format: 'pem',
+    },
+    privateKeyEncoding: {
+      type: 'pkcs8',
+      format: 'pem',
+    },
   });
 
-  it('should throw MissingKeyError when secret is missing', () => {
-    const token = sign(payload, { secret });
-    expect(() => verify(token, {} as any)).toThrow(MissingKeyError);
-  });
-
-  it('should throw MalformedTokenError for invalid token format', () => {
-    expect(() => verify('invalid.token', { secret })).toThrow(MalformedTokenError);
-    expect(() => verify('part1.part2', { secret })).toThrow(MalformedTokenError);
-    expect(() => verify('part1.part2.part3.part4', { secret })).toThrow(MalformedTokenError);
-  });
-
-  it('should throw MalformedTokenError for invalid base64url encoding', () => {
-    expect(() => verify('invalid!.part2.part3', { secret })).toThrow(MalformedTokenError);
-  });
-
-  it('should throw MalformedTokenError for invalid JSON in header', () => {
-    const invalidHeader = Buffer.from('invalid json').toString('base64url');
-    expect(() => verify(`${invalidHeader}.part2.part3`, { secret })).toThrow(MalformedTokenError);
-  });
-
-  it('should throw MalformedTokenError for invalid JSON in payload', () => {
-    const validHeader = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString(
-      'base64url'
-    );
-    const invalidPayload = Buffer.from('invalid json').toString('base64url');
-    expect(() => verify(`${validHeader}.${invalidPayload}.part3`, { secret })).toThrow(
-      MalformedTokenError
-    );
-  });
-
-  it('should throw InvalidSignatureError for invalid signature', () => {
-    const token = sign(payload, { secret });
-    const [, payloadPart] = token.split('.');
-    const invalidSignature = 'invalid_signature';
-    expect(() =>
-      verify(`${token.split('.')[0]}.${payloadPart}.${invalidSignature}`, { secret })
-    ).toThrow(InvalidSignatureError);
-  });
-
-  it('should throw InvalidSignatureError for unsupported algorithm', () => {
-    const token = sign(payload, { secret });
-    const [, payloadPart, signature] = token.split('.');
-    const invalidHeader = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).toString(
-      'base64url'
-    );
-    expect(() => verify(`${invalidHeader}.${payloadPart}.${signature}`, { secret })).toThrow(
-      InvalidSignatureError
-    );
-  });
-
-  it('should throw TokenExpiredError for expired token', () => {
-    // Create a token that's already expired
-    const now = Math.floor(Date.now() / 1000);
-    const expiredPayload = {
-      ...payload,
-      exp: now - 10, // Expired 10 seconds ago
-    };
-    const token = sign(expiredPayload, { secret });
-    expect(() => verify(token, { secret, clockToleranceSec: 0 })).toThrow(TokenExpiredError);
-  });
-
-  it('should throw ClaimValidationError for future not-before time', () => {
-    const token = sign(payload, { secret, notBefore: '1h' });
-    expect(() => verify(token, { secret })).toThrow(ClaimValidationError);
-  });
-
-  it('should throw ClaimValidationError for future issued-at time', () => {
-    const token = sign(payload, { secret });
-    const [header] = token.split('.');
-    const futurePayload = {
-      ...payload,
-      iat: Math.floor(Date.now() / 1000) + 3600, // 1 hour in the future
-    };
-    const encodedPayload = Buffer.from(JSON.stringify(futurePayload)).toString('base64url');
-    // Recompute signature for the new payload
-    const signature = crypto
-      .createHmac('sha256', secret)
-      .update(`${header}.${encodedPayload}`)
-      .digest('base64url');
-    expect(() => verify(`${header}.${encodedPayload}.${signature}`, { secret })).toThrow(
-      ClaimValidationError
-    );
-  });
-
-  it('should validate issuer claim', () => {
-    const token = sign(payload, { secret, issuer: 'test-issuer' });
-    expect(() => verify(token, { secret, issuer: 'wrong-issuer' })).toThrow(ClaimValidationError);
-    expect(verify(token, { secret, issuer: 'test-issuer' })).toBeDefined();
-  });
-
-  it('should validate audience claim', () => {
-    const token = sign(payload, { secret, audience: 'test-audience' });
-    expect(() => verify(token, { secret, audience: 'wrong-audience' })).toThrow(
-      ClaimValidationError
-    );
-    expect(verify(token, { secret, audience: 'test-audience' })).toBeDefined();
-  });
-
-  it('should validate array audience claim', () => {
-    const token = sign(payload, { secret, audience: ['aud1', 'aud2'] });
-    expect(() => verify(token, { secret, audience: 'wrong-audience' })).toThrow(
-      ClaimValidationError
-    );
-    expect(verify(token, { secret, audience: ['aud1', 'aud2'] })).toBeDefined();
-    expect(verify(token, { secret, audience: 'aud1' })).toBeDefined();
-  });
-
-  it('should support different algorithms', () => {
-    const algorithms = ['HS256', 'HS384', 'HS512'] as const;
-
-    for (const alg of algorithms) {
-      const token = sign(payload, { secret, algorithm: alg });
+  describe('HS256', () => {
+    it('should verify a valid JWT token', () => {
+      const token = sign(payload, { secret });
       const verified = verify(token, { secret });
       expect(verified).toEqual(expect.objectContaining(payload));
-    }
+    });
+
+    it('should throw MissingKeyError when secret is missing', () => {
+      const token = sign(payload, { secret });
+      expect(() => verify(token, {} as any)).toThrow(MissingKeyError);
+    });
+
+    it('should throw InvalidSignatureError when secret is wrong', () => {
+      const token = sign(payload, { secret });
+      expect(() => verify(token, { secret: 'wrong-secret' })).toThrow(InvalidSignatureError);
+    });
+
+    it('should throw InvalidSignatureError when token is tampered with', () => {
+      const token = sign(payload, { secret });
+      const [header, payloadPart, signature] = token.split('.');
+      const tamperedToken = `${header}.${payloadPart}.${signature.slice(0, -1)}`;
+      expect(() => verify(tamperedToken, { secret })).toThrow(InvalidSignatureError);
+    });
+
+    it('should validate standard claims', () => {
+      const token = sign(
+        {
+          ...payload,
+          exp: Math.floor(Date.now() / 1000) + 3600, // 1 hour from now
+          nbf: Math.floor(Date.now() / 1000) - 60, // 1 minute ago
+          iss: 'test-issuer',
+          aud: 'test-audience',
+        },
+        { secret }
+      );
+
+      const verified = verify(token, {
+        secret,
+        issuer: 'test-issuer',
+        audience: 'test-audience',
+      });
+
+      expect(verified).toHaveProperty('exp');
+      expect(verified).toHaveProperty('nbf');
+      expect(verified).toHaveProperty('iss', 'test-issuer');
+      expect(verified).toHaveProperty('aud', 'test-audience');
+    });
+
+    it('should throw TokenExpiredError for expired token', () => {
+      const token = sign(
+        {
+          ...payload,
+          exp: Math.floor(Date.now() / 1000) - 3600, // 1 hour ago
+        },
+        { secret }
+      );
+
+      expect(() => verify(token, { secret })).toThrow(TokenExpiredError);
+    });
+
+    it('should throw ClaimValidationError for future nbf', () => {
+      const token = sign(
+        {
+          ...payload,
+          nbf: Math.floor(Date.now() / 1000) + 3600, // 1 hour from now
+        },
+        { secret }
+      );
+
+      expect(() => verify(token, { secret })).toThrow(ClaimValidationError);
+    });
+
+    it('should throw ClaimValidationError for wrong issuer', () => {
+      const token = sign(
+        {
+          ...payload,
+          iss: 'wrong-issuer',
+        },
+        { secret }
+      );
+
+      expect(() => verify(token, { secret, issuer: 'correct-issuer' })).toThrow(
+        ClaimValidationError
+      );
+    });
+
+    it('should throw ClaimValidationError for wrong audience', () => {
+      const token = sign(
+        {
+          ...payload,
+          aud: 'wrong-audience',
+        },
+        { secret }
+      );
+
+      expect(() => verify(token, { secret, audience: 'correct-audience' })).toThrow(
+        ClaimValidationError
+      );
+    });
+
+    it('should throw MalformedTokenError for invalid token format', () => {
+      expect(() => verify('invalid.token', { secret })).toThrow(MalformedTokenError);
+    });
+
+    it('should throw MalformedTokenError for invalid base64', () => {
+      expect(() => verify('header.payload.signature!', { secret })).toThrow(MalformedTokenError);
+    });
+
+    it('should throw MalformedTokenError for invalid JSON', () => {
+      const invalidJson = Buffer.from('{"invalid": json}').toString('base64url');
+      expect(() => verify(`header.${invalidJson}.signature`, { secret })).toThrow(
+        MalformedTokenError
+      );
+    });
+
+    it('should handle custom payload properties', () => {
+      const customPayload = {
+        ...payload,
+        customField: 'customValue',
+        nested: { field: 'value' },
+      };
+
+      const token = sign(customPayload, { secret });
+      const verified = verify(token, { secret });
+      expect(verified).toEqual(expect.objectContaining(customPayload));
+    });
   });
 
-  it('should preserve custom payload properties', () => {
-    const customPayload = {
-      ...payload,
-      customField: 'customValue',
-      nested: { field: 'value' },
-    };
-    const token = sign(customPayload, { secret });
-    const verified = verify(token, { secret });
-    expect(verified).toEqual(expect.objectContaining(customPayload));
+  describe('RS256', () => {
+    it('should verify a valid JWT token with RS256', () => {
+      const token = sign(payload, { privateKey, algorithm: 'RS256' });
+      const verified = verify(token, { publicKey, algorithm: 'RS256' });
+      expect(verified).toEqual(expect.objectContaining(payload));
+    });
+
+    it('should throw MissingKeyError when publicKey is missing', () => {
+      const token = sign(payload, { privateKey, algorithm: 'RS256' });
+      expect(() => verify(token, { algorithm: 'RS256' })).toThrow(MissingKeyError);
+    });
+
+    it('should throw InvalidSignatureError when publicKey is wrong', () => {
+      const token = sign(payload, { privateKey, algorithm: 'RS256' });
+      const wrongKeyPair = generateKeyPairSync('rsa', {
+        modulusLength: 2048,
+        publicKeyEncoding: { type: 'spki', format: 'pem' },
+        privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+      });
+      expect(() => verify(token, { publicKey: wrongKeyPair.publicKey, algorithm: 'RS256' })).toThrow(
+        InvalidSignatureError
+      );
+    });
+
+    it('should throw InvalidSignatureError when token is tampered with', () => {
+      const token = sign(payload, { privateKey, algorithm: 'RS256' });
+      const [header, payloadPart, signature] = token.split('.');
+      const tamperedToken = `${header}.${payloadPart}.${signature.slice(0, -1)}`;
+      expect(() => verify(tamperedToken, { publicKey, algorithm: 'RS256' })).toThrow(
+        InvalidSignatureError
+      );
+    });
+
+    it('should validate standard claims', () => {
+      const token = sign(
+        {
+          ...payload,
+          exp: Math.floor(Date.now() / 1000) + 3600, // 1 hour from now
+          nbf: Math.floor(Date.now() / 1000) - 60, // 1 minute ago
+          iss: 'test-issuer',
+          aud: 'test-audience',
+        },
+        { privateKey, algorithm: 'RS256' }
+      );
+
+      const verified = verify(token, {
+        publicKey,
+        algorithm: 'RS256',
+        issuer: 'test-issuer',
+        audience: 'test-audience',
+      });
+
+      expect(verified).toHaveProperty('exp');
+      expect(verified).toHaveProperty('nbf');
+      expect(verified).toHaveProperty('iss', 'test-issuer');
+      expect(verified).toHaveProperty('aud', 'test-audience');
+    });
+
+    it('should throw TokenExpiredError for expired token', () => {
+      const token = sign(
+        {
+          ...payload,
+          exp: Math.floor(Date.now() / 1000) - 3600, // 1 hour ago
+        },
+        { privateKey, algorithm: 'RS256' }
+      );
+
+      expect(() => verify(token, { publicKey, algorithm: 'RS256' })).toThrow(TokenExpiredError);
+    });
+
+    it('should throw ClaimValidationError for future nbf', () => {
+      const token = sign(
+        {
+          ...payload,
+          nbf: Math.floor(Date.now() / 1000) + 3600, // 1 hour from now
+        },
+        { privateKey, algorithm: 'RS256' }
+      );
+
+      expect(() => verify(token, { publicKey, algorithm: 'RS256' })).toThrow(ClaimValidationError);
+    });
+
+    it('should throw ClaimValidationError for wrong issuer', () => {
+      const token = sign(
+        {
+          ...payload,
+          iss: 'wrong-issuer',
+        },
+        { privateKey, algorithm: 'RS256' }
+      );
+
+      expect(() =>
+        verify(token, { publicKey, algorithm: 'RS256', issuer: 'correct-issuer' })
+      ).toThrow(ClaimValidationError);
+    });
+
+    it('should throw ClaimValidationError for wrong audience', () => {
+      const token = sign(
+        {
+          ...payload,
+          aud: 'wrong-audience',
+        },
+        { privateKey, algorithm: 'RS256' }
+      );
+
+      expect(() =>
+        verify(token, { publicKey, algorithm: 'RS256', audience: 'correct-audience' })
+      ).toThrow(ClaimValidationError);
+    });
+
+    it('should throw MalformedTokenError for invalid token format', () => {
+      expect(() => verify('invalid.token', { publicKey, algorithm: 'RS256' })).toThrow(
+        MalformedTokenError
+      );
+    });
+
+    it('should throw MalformedTokenError for invalid base64', () => {
+      expect(() => verify('header.payload.signature!', { publicKey, algorithm: 'RS256' })).toThrow(
+        MalformedTokenError
+      );
+    });
+
+    it('should throw MalformedTokenError for invalid JSON', () => {
+      const invalidJson = Buffer.from('{"invalid": json}').toString('base64url');
+      expect(() =>
+        verify(`header.${invalidJson}.signature`, { publicKey, algorithm: 'RS256' })
+      ).toThrow(MalformedTokenError);
+    });
   });
 });

@@ -1,4 +1,4 @@
-import { createHmac } from 'crypto';
+import { createHmac, createSign } from 'crypto';
 import { base64UrlEncode } from './utils';
 import { parseExpiresIn } from './utils';
 import { SignOptions, JwtHeader, JwtPayload } from './types';
@@ -9,16 +9,24 @@ import { MissingKeyError, ClaimValidationError } from './errors';
  * @param payload - The JWT payload to sign
  * @param options - Signing options including secret key and optional claims
  * @returns The signed JWT token
- * @throws {MissingKeyError} If secret is missing or too short
+ * @throws {MissingKeyError} If secret/privateKey is missing or invalid
  * @throws {ClaimValidationError} If payload contains invalid claims
  */
 export function sign(payload: JwtPayload, options: SignOptions): string {
-  // Validate secret
-  if (!options.secret) {
-    throw new MissingKeyError('Secret is required for signing');
-  }
-  if (options.secret.length < 32) {
-    throw new MissingKeyError('Secret must be at least 32 characters long');
+  const algorithm = options.algorithm || 'HS256';
+
+  // Validate key based on algorithm
+  if (algorithm === 'HS256') {
+    if (!options.secret) {
+      throw new MissingKeyError('Secret is required for HS256 signing');
+    }
+    if (options.secret.length < 32) {
+      throw new MissingKeyError('Secret must be at least 32 characters long');
+    }
+  } else if (algorithm === 'RS256') {
+    if (!options.privateKey) {
+      throw new MissingKeyError('Private key is required for RS256 signing');
+    }
   }
 
   // Validate payload
@@ -28,7 +36,7 @@ export function sign(payload: JwtPayload, options: SignOptions): string {
 
   // Create header
   const header: JwtHeader = {
-    alg: options.algorithm || 'HS256',
+    alg: algorithm,
     typ: 'JWT',
     ...options.header, // Allow custom header fields
   };
@@ -63,22 +71,21 @@ export function sign(payload: JwtPayload, options: SignOptions): string {
   // Encode header and payload
   const encodedHeader = base64UrlEncode(JSON.stringify(header));
   const encodedPayload = base64UrlEncode(JSON.stringify(finalPayload));
+  const signingInput = `${encodedHeader}.${encodedPayload}`;
 
-  // Map JWT alg to Node.js digest
-  const algMap: Record<string, string> = {
-    HS256: 'sha256',
-    HS384: 'sha384',
-    HS512: 'sha512',
-  };
-  const digestAlg = algMap[header.alg];
-  if (!digestAlg) {
-    throw new ClaimValidationError(`Unsupported algorithm: ${header.alg}`);
+  // Create signature based on algorithm
+  let signature: Buffer;
+  if (algorithm === 'HS256') {
+    signature = createHmac('sha256', options.secret!)
+      .update(signingInput)
+      .digest();
+  } else if (algorithm === 'RS256') {
+    signature = createSign('RSA-SHA256')
+      .update(signingInput)
+      .sign(options.privateKey!);
+  } else {
+    throw new ClaimValidationError(`Unsupported algorithm: ${algorithm}`);
   }
-
-  // Create signature
-  const signature = createHmac(digestAlg, options.secret)
-    .update(`${encodedHeader}.${encodedPayload}`)
-    .digest();
 
   // Return final token
   return `${encodedHeader}.${encodedPayload}.${base64UrlEncode(signature)}`;

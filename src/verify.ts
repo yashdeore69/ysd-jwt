@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from 'crypto';
+import { createHmac, createVerify, timingSafeEqual } from 'crypto';
 import { base64UrlDecode } from './utils';
 import { VerifyOptions, JwtHeader, JwtPayload } from './types';
 import {
@@ -14,16 +14,24 @@ import {
  * @param token - The JWT token to verify
  * @param options - Verification options including secret key and optional claims
  * @returns The verified JWT payload
- * @throws {MissingKeyError} If secret is missing
+ * @throws {MissingKeyError} If secret/publicKey is missing
  * @throws {MalformedTokenError} If token is malformed
  * @throws {InvalidSignatureError} If signature is invalid
  * @throws {TokenExpiredError} If token has expired
  * @throws {ClaimValidationError} If claims are invalid
  */
 export function verify(token: string, options: VerifyOptions): JwtPayload {
-  // Validate secret
-  if (!options.secret) {
-    throw new MissingKeyError('Secret is required for verification');
+  const algorithm = options.algorithm || 'HS256';
+
+  // Validate key based on algorithm
+  if (algorithm === 'HS256') {
+    if (!options.secret) {
+      throw new MissingKeyError('Secret is required for HS256 verification');
+    }
+  } else if (algorithm === 'RS256') {
+    if (!options.publicKey) {
+      throw new MissingKeyError('Public key is required for RS256 verification');
+    }
   }
 
   // Split token
@@ -41,18 +49,9 @@ export function verify(token: string, options: VerifyOptions): JwtPayload {
   }
 
   // Validate algorithm
-  const supportedAlgorithms = ['HS256', 'HS384', 'HS512'];
-  if (!supportedAlgorithms.includes(header.alg)) {
-    throw new InvalidSignatureError(`Unsupported algorithm: ${header.alg}`);
+  if (header.alg !== algorithm) {
+    throw new InvalidSignatureError(`Token algorithm mismatch: expected ${algorithm}, got ${header.alg}`);
   }
-
-  // Map JWT alg to Node.js digest
-  const algMap: Record<string, string> = {
-    HS256: 'sha256',
-    HS384: 'sha384',
-    HS512: 'sha512',
-  };
-  const digestAlg = algMap[header.alg];
 
   // Parse payload first to validate JSON
   let payload: JwtPayload;
@@ -63,23 +62,40 @@ export function verify(token: string, options: VerifyOptions): JwtPayload {
   }
 
   // Verify signature
-  const signature = createHmac(digestAlg, options.secret)
-    .update(`${parts[0]}.${parts[1]}`)
-    .digest();
+  const signingInput = `${parts[0]}.${parts[1]}`;
+  let isValid = false;
 
-  let providedSignature: Buffer;
-  try {
-    providedSignature = base64UrlDecode(parts[2]);
-  } catch {
-    throw new MalformedTokenError('Invalid signature encoding');
-  }
+  if (algorithm === 'HS256') {
+    const signature = createHmac('sha256', options.secret!)
+      .update(signingInput)
+      .digest();
 
-  // Compare signatures
-  try {
-    if (!timingSafeEqual(signature, providedSignature)) {
+    let providedSignature: Buffer;
+    try {
+      providedSignature = base64UrlDecode(parts[2]);
+    } catch {
+      throw new MalformedTokenError('Invalid signature encoding');
+    }
+
+    try {
+      isValid = timingSafeEqual(signature, providedSignature);
+    } catch {
       throw new InvalidSignatureError('Invalid signature');
     }
-  } catch {
+  } else if (algorithm === 'RS256') {
+    let providedSignature: Buffer;
+    try {
+      providedSignature = base64UrlDecode(parts[2]);
+    } catch {
+      throw new MalformedTokenError('Invalid signature encoding');
+    }
+
+    isValid = createVerify('RSA-SHA256')
+      .update(signingInput)
+      .verify(options.publicKey!, providedSignature);
+  }
+
+  if (!isValid) {
     throw new InvalidSignatureError('Invalid signature');
   }
 
@@ -121,7 +137,6 @@ export function verify(token: string, options: VerifyOptions): JwtPayload {
     }
 
     const expectedAud = Array.isArray(options.audience) ? options.audience : [options.audience];
-
     const tokenAud = Array.isArray(aud) ? aud : [aud];
 
     const hasValidAud = tokenAud.some((a) => expectedAud.includes(a));
