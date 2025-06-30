@@ -1,5 +1,5 @@
 import { createHmac, createSign } from 'crypto';
-import { base64UrlEncode } from './utils';
+import { base64UrlEncode, validatePemKey } from './utils';
 import { parseExpiresIn } from './utils';
 import { SignOptions, JwtHeader, JwtPayload } from './types';
 import { MissingKeyError, ClaimValidationError } from './errors';
@@ -27,6 +27,7 @@ export function sign(payload: JwtPayload, options: SignOptions): string {
     if (!options.privateKey) {
       throw new MissingKeyError('Private key is required for RS256 signing');
     }
+    validatePemKey(options.privateKey, 'private');
   }
 
   // Validate payload

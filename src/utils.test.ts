@@ -1,5 +1,5 @@
 import { base64UrlEncode, base64UrlDecode, parseExpiresIn } from './utils';
-import { InvalidBase64UrlError, InvalidDurationError } from './errors';
+import { InvalidBase64UrlError } from './errors';
 
 describe('Base64Url Utilities', () => {
   describe('base64UrlEncode', () => {
@@ -102,15 +102,15 @@ describe('Duration Parsing', () => {
     });
 
     it('should throw error for invalid format', () => {
-      expect(() => parseExpiresIn('invalid')).toThrow(InvalidDurationError);
+      expect(() => parseExpiresIn('invalid')).toThrow(Error);
     });
 
-    it('should throw error for invalid time unit', () => {
-      expect(() => parseExpiresIn('1d')).toThrow(InvalidDurationError);
+    it('should parse days', () => {
+      expect(parseExpiresIn('1d')).toBe(86400);
     });
 
     it('should throw error for non-string/non-number input', () => {
-      expect(() => parseExpiresIn(null as any)).toThrow(InvalidDurationError);
+      expect(() => parseExpiresIn(null as any)).toThrow(Error);
     });
   });
 });

@@ -1,5 +1,5 @@
 import { createHmac, createVerify, timingSafeEqual } from 'crypto';
-import { base64UrlDecode } from './utils';
+import { base64UrlDecode, validatePemKey } from './utils';
 import { VerifyOptions, JwtHeader, JwtPayload } from './types';
 import {
   MissingKeyError,
@@ -32,6 +32,7 @@ export function verify(token: string, options: VerifyOptions): JwtPayload {
     if (!options.publicKey) {
       throw new MissingKeyError('Public key is required for RS256 verification');
     }
+    validatePemKey(options.publicKey, 'public');
   }
 
   // Split token
@@ -43,9 +44,15 @@ export function verify(token: string, options: VerifyOptions): JwtPayload {
   // Parse header
   let header: JwtHeader;
   try {
-    header = JSON.parse(base64UrlDecode(parts[0]).toString());
+    const decodedHeader = JSON.parse(base64UrlDecode(parts[0]).toString());
+    header = decodedHeader as JwtHeader;
   } catch {
     throw new MalformedTokenError('Invalid token header');
+  }
+
+  // Prevent 'none' algorithm
+  if ((header as any).alg === 'none') {
+    throw new InvalidSignatureError('The "none" algorithm is not supported');
   }
 
   // Validate algorithm

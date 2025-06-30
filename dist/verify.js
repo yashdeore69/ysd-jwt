@@ -27,6 +27,7 @@ function verify(token, options) {
         if (!options.publicKey) {
             throw new errors_1.MissingKeyError('Public key is required for RS256 verification');
         }
+        (0, utils_1.validatePemKey)(options.publicKey, 'public');
     }
     // Split token
     const parts = token.split('.');
@@ -36,10 +37,15 @@ function verify(token, options) {
     // Parse header
     let header;
     try {
-        header = JSON.parse((0, utils_1.base64UrlDecode)(parts[0]).toString());
+        const decodedHeader = JSON.parse((0, utils_1.base64UrlDecode)(parts[0]).toString());
+        header = decodedHeader;
     }
     catch {
         throw new errors_1.MalformedTokenError('Invalid token header');
+    }
+    // Prevent 'none' algorithm
+    if (header.alg === 'none') {
+        throw new errors_1.InvalidSignatureError('The "none" algorithm is not supported');
     }
     // Validate algorithm
     if (header.alg !== algorithm) {

@@ -1,4 +1,4 @@
-import { InvalidBase64UrlError, InvalidDurationError } from './errors';
+import { InvalidBase64UrlError, MissingKeyError } from './errors';
 
 /**
  * Encodes a Buffer or string to base64url format
@@ -30,29 +30,43 @@ export function parseExpiresIn(expiresIn: string | number): number {
   if (typeof expiresIn === 'number') {
     return expiresIn;
   }
-
-  if (expiresIn == null || typeof expiresIn !== 'string') {
-    throw new InvalidDurationError('Invalid input type. Expected string or number');
-  }
-
-  const match = expiresIn.match(/^(\d+)([smh])$/);
+  const match = expiresIn.match(/^(\d+)([smhd])$/);
   if (!match) {
-    throw new InvalidDurationError(
-      'Invalid expiresIn format. Use number of seconds or string like "1h", "30m", "60s"'
-    );
+    throw new Error('Invalid expiresIn format');
   }
-
-  const [, value, unit] = match;
-  const numValue = parseInt(value, 10);
-
+  const value = parseInt(match[1], 10);
+  const unit = match[2];
   switch (unit) {
     case 's':
-      return numValue;
+      return value;
     case 'm':
-      return numValue * 60;
+      return value * 60;
     case 'h':
-      return numValue * 3600;
+      return value * 60 * 60;
+    case 'd':
+      return value * 24 * 60 * 60;
     default:
-      throw new InvalidDurationError('Invalid time unit. Use s, m, or h');
+      throw new Error('Invalid expiresIn unit');
   }
+}
+
+/**
+ * Validates if a key is a valid PEM-formatted key.
+ * @param key - The key to validate (string or Buffer).
+ * @param type - The expected key type ('private' or 'public').
+ * @returns True if the key is valid.
+ * @throws {MissingKeyError} If the key is not in a valid PEM format.
+ */
+export function validatePemKey(key: string | Buffer, type: 'private' | 'public'): boolean {
+  const keyStr = key.toString('utf-8').trim();
+
+  const startsWith =
+    type === 'private' ? '-----BEGIN PRIVATE KEY-----' : '-----BEGIN PUBLIC KEY-----';
+  const endsWith = type === 'private' ? '-----END PRIVATE KEY-----' : '-----END PUBLIC KEY-----';
+
+  if (!keyStr.startsWith(startsWith) || !keyStr.endsWith(endsWith)) {
+    throw new MissingKeyError(`Invalid ${type} key format. Expected a PEM-encoded key.`);
+  }
+
+  return true;
 }

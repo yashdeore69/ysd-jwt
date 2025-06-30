@@ -1,6 +1,6 @@
 {
   "name": "ysd-jwt",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
@@ -36,7 +36,7 @@
   ],
   "author": "Yash Sunil Deore <deoreyash2003@gmail.com>",
   "license": "MIT",
-  "description": "A lightweight and beginner-friendly JWT authentication middleware for Express.js with token creation, verification, and user extraction from headers or cookies.",
+  "description": "A secure and easy-to-use JWT library for Node.js and TypeScript.",
   "devDependencies": {
     "@types/express": "^5.0.3",
     "@types/jest": "^29.5.14",

@@ -150,6 +150,15 @@ describe('sign', () => {
       expect(decodedPayload.nbf).toBeGreaterThan(now + 1700); // 30 minutes - 100 seconds
       expect(decodedPayload.nbf).toBeLessThan(now + 1900); // 30 minutes + 100 seconds
     });
+
+    it('should correctly handle unicode characters in payload', () => {
+      const unicodePayload = { ...payload, user: 'Jöhn Døe', data: 'äöüß' };
+      const token = sign(unicodePayload, { secret });
+      const [, encodedPayload] = token.split('.');
+      const decodedPayload = JSON.parse(Buffer.from(encodedPayload, 'base64url').toString('utf-8'));
+      expect(decodedPayload.user).toBe('Jöhn Døe');
+      expect(decodedPayload.data).toBe('äöüß');
+    });
   });
 
   describe('RS256', () => {
@@ -170,6 +179,13 @@ describe('sign', () => {
 
     it('should throw MissingKeyError when privateKey is missing', () => {
       expect(() => sign(payload, { algorithm: 'RS256' })).toThrow(MissingKeyError);
+    });
+
+    it('should throw MissingKeyError for invalid privateKey format', () => {
+      const invalidPrivateKey = 'not-a-valid-pem-key';
+      expect(() => sign(payload, { privateKey: invalidPrivateKey, algorithm: 'RS256' })).toThrow(
+        MissingKeyError
+      );
     });
 
     it('should include standard claims when provided', () => {

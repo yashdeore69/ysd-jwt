@@ -28,6 +28,7 @@ function sign(payload, options) {
         if (!options.privateKey) {
             throw new errors_1.MissingKeyError('Private key is required for RS256 signing');
         }
+        (0, utils_1.validatePemKey)(options.privateKey, 'private');
     }
     // Validate payload
     if (typeof payload !== 'object' || payload === null) {

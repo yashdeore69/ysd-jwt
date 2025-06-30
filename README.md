@@ -8,124 +8,117 @@ A beginner-friendly, secure-by-default JWT library for Node.js, supporting both 
 npm install ysd-jwt
 ```
 
-## Quick Start
+## Quick Start: HS256
 
-### HS256 (Symmetric)
+```ts
+import { sign, verify } from 'ysd-jwt';
 
-```javascript
-const { sign, verify } = require('ysd-jwt');
+// For HS256, use a secret that is at least 32 characters long.
+// It's best practice to load this from environment variables.
+const secret = 'your-super-secret-key-that-is-at-least-32-characters-long';
 
-const payload = { sub: '1234567890', name: 'John Doe' };
-const secret = 'your-256-bit-secret-your-256-bit-secret';
+// Create a token
+const token = sign({ sub: 'user123' }, {
+  secret,
+  expiresIn: '1h', // e.g., '1h', '30m', '1d'
+  issuer: 'my-app',
+  audience: 'my-app-users',
+});
 
-// Sign a token
-const token = sign(payload, { secret });
-
-// Verify a token
-try {
-  const decoded = verify(token, { secret });
-  console.log(decoded); // { sub: '1234567890', name: 'John Doe' }
-} catch (error) {
-  console.error('Token verification failed:', error.message);
-}
-```
-
-### RS256 (Asymmetric)
-
-```javascript
-const { sign, verify } = require('ysd-jwt');
-const fs = require('fs');
-
-const payload = { sub: '1234567890', name: 'John Doe' };
-
-// Load RSA keys
-const privateKey = fs.readFileSync('private.pem');
-const publicKey = fs.readFileSync('public.pem');
-
-// Sign a token
-const token = sign(payload, { privateKey, algorithm: 'RS256' });
+console.log('Generated Token:', token);
 
 // Verify a token
 try {
-  const decoded = verify(token, { publicKey, algorithm: 'RS256' });
-  console.log(decoded); // { sub: '1234567890', name: 'John Doe' }
-} catch (error) {
-  console.error('Token verification failed:', error.message);
+  const payload = verify(token, {
+    secret,
+    issuer: 'my-app',
+    audience: 'my-app-users',
+  });
+  console.log('Verified Payload:', payload);
+} catch (err) {
+  console.error('Token verification failed:', err.message);
 }
 ```
+
+## RS256 Usage
+
+For RS256, you need an RSA key pair. The private key is used to sign the token, and the public key is used to verify it.
+
+### Key Generation
+
+You can generate a 2048-bit RSA key pair using OpenSSL:
+
+```bash
+# Generate a private key
+openssl genpkey -algorithm RSA -out private.pem -pkeyopt rsa_keygen_bits:2048
+
+# Extract the public key from the private key
+openssl rsa -pubout -in private.pem -out public.pem
+```
+
+### Example
+
+```ts
+import { sign, verify } from 'ysd-jwt';
+import fs from 'fs';
+
+// Load the keys from files
+const privateKey = fs.readFileSync('./private.pem');
+const publicKey = fs.readFileSync('./public.pem');
+
+// Sign a token with the private key
+const token = sign({ sub: 'user456' }, {
+  privateKey,
+  algorithm: 'RS256',
+  expiresIn: '2h',
+  issuer: 'my-app',
+  audience: 'my-app-users',
+});
+
+// Verify the token with the public key
+try {
+  const payload = verify(token, {
+    publicKey,
+    algorithm: 'RS256',
+    issuer: 'my-app',
+    audience: 'my-app-users',
+  });
+  console.log('RS256 Verified Payload:', payload);
+} catch (err) {
+  console.error('Token verification failed:', err.message);
+}
+```
+
+**Note:** The `privateKey` and `publicKey` must be valid PEM-formatted strings or Buffers. The library will throw an error if the format is incorrect.
 
 ## Express Middleware
 
-You can use the provided Express middleware to easily verify JWTs in your Express application.
+`ysd-jwt` includes middleware to protect your Express routes.
 
-### Basic Usage
-
-```javascript
-const express = require('express');
-const { jwtMiddleware } = require('ysd-jwt');
+```ts
+import express from 'express';
+import { jwtMiddleware } from 'ysd-jwt';
 
 const app = express();
+const secret = 'your-super-secret-key-that-is-at-least-32-characters-long';
 
-// Apply middleware globally
-app.use(jwtMiddleware({ secret: 'your-256-bit-secret-your-256-bit-secret' }));
+// Add the middleware to all routes you want to protect
+app.use('/protected-routes', jwtMiddleware({ secret, issuer: 'my-app' }));
 
-// Or apply to specific routes
-app.get('/protected', jwtMiddleware({ secret: 'your-256-bit-secret-your-256-bit-secret' }), (req, res) => {
-  res.json({ user: req.user });
+app.get('/protected-routes/data', (req, res) => {
+  // If the token is valid, `req.user` will be populated with the token's payload
+  res.json({
+    message: 'Welcome!',
+    user: req.user
+  });
 });
 
-app.listen(3000, () => {
-  console.log('Server running on http://localhost:3000');
-});
+app.listen(3000, () => console.log('Server started'));
 ```
 
-### Using RS256
+## Examples
 
-```javascript
-const express = require('express');
-const fs = require('fs');
-const { jwtMiddleware } = require('ysd-jwt');
-
-const app = express();
-
-// Load public key for RS256 verification
-const publicKey = fs.readFileSync('public.pem');
-
-// Apply middleware with RS256
-app.use(jwtMiddleware({ publicKey, algorithm: 'RS256' }));
-
-app.get('/protected', (req, res) => {
-  res.json({ user: req.user });
-});
-
-app.listen(3000, () => {
-  console.log('Server running on http://localhost:3000');
-});
-```
-
-### Custom Token Extraction
-
-You can provide a custom function to extract the token from the request:
-
-```javascript
-const express = require('express');
-const { jwtMiddleware } = require('ysd-jwt');
-
-const app = express();
-
-app.use(jwtMiddleware({
-  secret: 'your-256-bit-secret-your-256-bit-secret',
-  getToken: (req) => req.query.token || null,
-}));
-
-app.get('/protected', (req, res) => {
-  res.json({ user: req.user });
-});
-
-app.listen(3000, () => {
-  console.log('Server running on http://localhost:3000');
-});
-```
+For a complete, runnable example, see the Express application in the [`/examples/express-app`](./examples/express-app) directory.
 
 ## API Reference
 

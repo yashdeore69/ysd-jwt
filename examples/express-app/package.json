@@ -1,0 +1,13 @@
+{
+  "name": "ysd-jwt-example",
+  "version": "1.0.0",
+  "description": "Example Express app for ysd-jwt",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "ysd-jwt": "file:../.."
+  }
+} 

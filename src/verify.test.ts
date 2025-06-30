@@ -1,5 +1,6 @@
 import { verify } from './verify';
 import { sign } from './sign';
+import { base64UrlEncode } from '../src/utils';
 import {
   MissingKeyError,
   TokenExpiredError,
@@ -126,6 +127,42 @@ describe('verify', () => {
       );
     });
 
+    describe('Clock Tolerance', () => {
+      it('should accept a token that is slightly expired within tolerance', () => {
+        const token = sign(
+          { ...payload, exp: Math.floor(Date.now() / 1000) - 3 }, // 3 seconds ago
+          { secret }
+        );
+        const verified = verify(token, { secret, clockToleranceSec: 5 });
+        expect(verified).toBeTruthy();
+      });
+
+      it('should reject a token that is expired beyond tolerance', () => {
+        const token = sign(
+          { ...payload, exp: Math.floor(Date.now() / 1000) - 10 }, // 10 seconds ago
+          { secret }
+        );
+        expect(() => verify(token, { secret, clockToleranceSec: 5 })).toThrow(TokenExpiredError);
+      });
+
+      it('should accept a token that is slightly before its nbf within tolerance', () => {
+        const token = sign(
+          { ...payload, nbf: Math.floor(Date.now() / 1000) + 3 }, // 3 seconds from now
+          { secret }
+        );
+        const verified = verify(token, { secret, clockToleranceSec: 5 });
+        expect(verified).toBeTruthy();
+      });
+
+      it('should reject a token that is before its nbf beyond tolerance', () => {
+        const token = sign(
+          { ...payload, nbf: Math.floor(Date.now() / 1000) + 10 }, // 10 seconds from now
+          { secret }
+        );
+        expect(() => verify(token, { secret, clockToleranceSec: 5 })).toThrow(ClaimValidationError);
+      });
+    });
+
     it('should throw MalformedTokenError for invalid token format', () => {
       expect(() => verify('invalid.token', { secret })).toThrow(MalformedTokenError);
     });
@@ -152,6 +189,23 @@ describe('verify', () => {
       const verified = verify(token, { secret });
       expect(verified).toEqual(expect.objectContaining(customPayload));
     });
+
+    it('should correctly verify a token with unicode characters', () => {
+      const unicodePayload = { ...payload, user: 'Jöhn Døe', data: 'äöüß' };
+      const token = sign(unicodePayload, { secret });
+      const verified = verify(token, { secret });
+      expect(verified.user).toBe('Jöhn Døe');
+      expect(verified.data).toBe('äöüß');
+    });
+
+    it('should reject tokens with "none" algorithm in the header', () => {
+      const header = { alg: 'none', typ: 'JWT' };
+      const encodedHeader = base64UrlEncode(JSON.stringify(header));
+      const encodedPayload = base64UrlEncode(JSON.stringify(payload));
+      const token = `${encodedHeader}.${encodedPayload}.`; // No signature
+
+      expect(() => verify(token, { secret, algorithm: 'HS256' })).toThrow(InvalidSignatureError);
+    });
   });
 
   describe('RS256', () => {
@@ -164,6 +218,14 @@ describe('verify', () => {
     it('should throw MissingKeyError when publicKey is missing', () => {
       const token = sign(payload, { privateKey, algorithm: 'RS256' });
       expect(() => verify(token, { algorithm: 'RS256' })).toThrow(MissingKeyError);
+    });
+
+    it('should throw MissingKeyError for invalid publicKey format', () => {
+      const token = sign(payload, { privateKey, algorithm: 'RS256' });
+      const invalidPublicKey = 'not-a-valid-pem-key';
+      expect(() => verify(token, { publicKey: invalidPublicKey, algorithm: 'RS256' })).toThrow(
+        MissingKeyError
+      );
     });
 
     it('should throw InvalidSignatureError when publicKey is wrong', () => {
@@ -281,6 +343,36 @@ describe('verify', () => {
       expect(() =>
         verify(`header.${invalidJson}.signature`, { publicKey, algorithm: 'RS256' })
       ).toThrow(MalformedTokenError);
+    });
+  });
+
+  describe('Security', () => {
+    it('should not allow algorithm confusion (HS256 token, RS256 verify)', () => {
+      // Attacker creates a token with alg: HS256 but using the public key as the secret
+      const token = sign(payload, {
+        secret: publicKey.toString(), // Using public key as HS256 secret
+        algorithm: 'HS256',
+        header: { alg: 'HS256' },
+      });
+
+      // Server tries to verify with RS256, but attacker's token should be rejected
+      expect(() =>
+        verify(token, {
+          publicKey,
+          algorithm: 'RS256',
+        })
+      ).toThrow(InvalidSignatureError);
+    });
+
+    it('should reject tokens with "none" algorithm', () => {
+      const header = { alg: 'none', typ: 'JWT' };
+      const encodedHeader = Buffer.from(JSON.stringify(header)).toString('base64url');
+      const encodedPayload = Buffer.from(JSON.stringify(payload)).toString('base64url');
+      const token = `${encodedHeader}.${encodedPayload}.`; // No signature
+
+      expect(() => verify(token, { secret, algorithm: 'none' as any })).toThrow(
+        InvalidSignatureError
+      );
     });
   });
 });
